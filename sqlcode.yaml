@@ -1,0 +1,15 @@
+databases:
+  localtest:
+    connection: sqlserver://localhost:1433?database=foo&user id=foouser&password=FooPasswd1
+
+# One option is to list other paths to include ('dependencies') here.
+
+# Commands to set up for testing with credentials above:
+#
+#sp_configure 'contained database authentication', 1;
+#reconfigure
+#create database foo
+#alter database foo set containment  = partial;
+#use foo
+#create user foouser with password = 'FooPasswd1'
+#
