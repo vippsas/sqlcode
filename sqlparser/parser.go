@@ -189,12 +189,16 @@ loop:
 func (doc *Document) parseBatchSeparator(s *Scanner) {
 	// just saw a 'go'; just make sure there's nothing bad trailing it
 	// (if there is, convert to errors and move on until the line is consumed
+	errorEmitted := false
 	for {
 		switch s.NextToken() {
 		case WhitespaceToken:
 			continue
 		case MalformedBatchSeparatorToken:
-			doc.addError(s, "`go` should be alone on a line without any comments")
+			if !errorEmitted {
+				doc.addError(s, "`go` should be alone on a line without any comments")
+				errorEmitted = true
+			}
 			continue
 		default:
 			return
@@ -260,6 +264,7 @@ func (doc *Document) parseBatch(s *Scanner, isFirst bool) (hasMore bool) {
 				doc.Creates = append(doc.Creates, c)
 			default:
 				doc.addError(s, "Expected 'declare' or 'create', got: "+s.ReservedWord())
+				s.NextToken()
 			}
 		case BatchSeparatorToken:
 			doc.parseBatchSeparator(s)
