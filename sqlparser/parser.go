@@ -94,13 +94,13 @@ func (doc *Document) parseTypeExpression(s *Scanner) (t Type) {
 				doc.recoverToNextStatement(s)
 				return
 			}
-			s.NextNonWhitespaceToken()
+			s.NextNonWhitespaceCommentToken()
 			switch {
 			case s.TokenType() == CommaToken:
-				s.NextNonWhitespaceToken()
+				s.NextNonWhitespaceCommentToken()
 				continue
 			case s.TokenType() == RightParenToken:
-				s.NextNonWhitespaceToken()
+				s.NextNonWhitespaceCommentToken()
 				return
 			default:
 				doc.unexpectedTokenError(s)
@@ -114,9 +114,9 @@ func (doc *Document) parseTypeExpression(s *Scanner) (t Type) {
 		panic("assertion failed, bug in caller")
 	}
 	t.BaseType = s.Token()
-	s.NextNonWhitespaceToken()
+	s.NextNonWhitespaceCommentToken()
 	if s.TokenType() == LeftParenToken {
-		s.NextNonWhitespaceToken()
+		s.NextNonWhitespaceCommentToken()
 		parseArgs()
 	}
 	return
@@ -139,12 +139,12 @@ loop:
 			!strings.HasPrefix(strings.ToLower(variableName), "@const") {
 			doc.addError(s, "sqlcode constants needs to have names starting with @Enum, @Global or @Const: "+variableName)
 		}
-		s.NextNonWhitespaceToken()
+		s.NextNonWhitespaceCommentToken()
 		var variableType Type
 		switch s.TokenType() {
 		case EqualToken:
 			doc.addError(s, "sqlcode constants needs a type declared explicitly")
-			s.NextNonWhitespaceToken()
+			s.NextNonWhitespaceCommentToken()
 		case UnquotedIdentifierToken:
 			variableType = doc.parseTypeExpression(s)
 		}
@@ -154,7 +154,7 @@ loop:
 			doc.recoverToNextStatement(s)
 		}
 
-		switch s.NextNonWhitespaceToken() {
+		switch s.NextNonWhitespaceCommentToken() {
 		case NumberToken, NVarcharLiteralToken, VarcharLiteralToken:
 			result = append(result, Declare{
 				Start:        declareStart,
@@ -169,12 +169,12 @@ loop:
 			return
 		}
 
-		switch s.NextNonWhitespaceToken() {
+		switch s.NextNonWhitespaceCommentToken() {
 		case CommaToken:
-			s.NextNonWhitespaceToken()
+			s.NextNonWhitespaceCommentToken()
 			continue
 		case SemicolonToken:
-			s.NextNonWhitespaceToken()
+			s.NextNonWhitespaceCommentToken()
 			break loop
 		default:
 			break loop
@@ -216,7 +216,7 @@ func (doc *Document) parseDeclareBatch(s *Scanner) (hasMore bool) {
 		case tt == EOFToken:
 			return false
 		case tt == ReservedWordToken && s.ReservedWord() == "declare":
-			s.NextNonWhitespaceToken()
+			s.NextNonWhitespaceCommentToken()
 			d := doc.parseDeclare(s)
 			doc.Declares = append(doc.Declares, d...)
 		case tt == ReservedWordToken && s.ReservedWord() != "declare":
@@ -234,6 +234,8 @@ func (doc *Document) parseDeclareBatch(s *Scanner) (hasMore bool) {
 
 func (doc *Document) parseBatch(s *Scanner, isFirst bool) (hasMore bool) {
 	var nodes []Unparsed
+	var docstring []PosString
+	newLineEncounteredInDocstring := false
 
 	var createCountInBatch int
 
@@ -242,8 +244,22 @@ func (doc *Document) parseBatch(s *Scanner, isFirst bool) (hasMore bool) {
 		switch tt {
 		case EOFToken:
 			return false
-		case WhitespaceToken, MultilineCommentToken, SinglelineCommentToken:
+		case WhitespaceToken, MultilineCommentToken:
 			nodes = append(nodes, CreateUnparsed(s))
+			// do not reset token for a single trailing newline
+			t := s.Token()
+			if !newLineEncounteredInDocstring && (t == "\n" || t == "\r\n") {
+				newLineEncounteredInDocstring = true
+			} else {
+				docstring = nil
+			}
+			s.NextToken()
+		case SinglelineCommentToken:
+			// We build up a list of single line comments for the "docstring";
+			// it is reset whenever we encounter something else
+			docstring = append(docstring, PosString{s.Start(), s.Token()})
+			nodes = append(nodes, CreateUnparsed(s))
+			newLineEncounteredInDocstring = false
 			s.NextToken()
 		case ReservedWordToken:
 			switch s.ReservedWord() {
@@ -261,6 +277,7 @@ func (doc *Document) parseBatch(s *Scanner, isFirst bool) (hasMore bool) {
 				// *prepend* what we saw before getting to the 'create'
 				createCountInBatch++
 				c.Body = append(nodes, c.Body...)
+				c.Docstring = docstring
 				doc.Creates = append(doc.Creates, c)
 			default:
 				doc.addError(s, "Expected 'declare' or 'create', got: "+s.ReservedWord())
@@ -272,6 +289,7 @@ func (doc *Document) parseBatch(s *Scanner, isFirst bool) (hasMore bool) {
 		default:
 			doc.unexpectedTokenError(s)
 			s.NextToken()
+			docstring = nil
 		}
 	}
 }
@@ -301,7 +319,7 @@ func (d *Document) recoverToNextStatement(s *Scanner) {
 	// skip parsing until we hit a reserved word that starts a statement
 	// we recognize
 	for {
-		s.NextNonWhitespaceToken()
+		s.NextNonWhitespaceCommentToken()
 		switch s.TokenType() {
 		case ReservedWordToken:
 			switch s.ReservedWord() {

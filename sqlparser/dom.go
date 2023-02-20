@@ -2,6 +2,7 @@ package sqlparser
 
 import (
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"io"
 	"strings"
 )
@@ -63,6 +64,40 @@ type Create struct {
 	QuotedName PosString // proc/func/type name, including []
 	Body       []Unparsed
 	DependsOn  []PosString
+	Docstring  []PosString // comment lines before the create statement. Note: this is also part of Body
+}
+
+func (c Create) DocstringAsString() string {
+	var result []string
+	for _, line := range c.Docstring {
+		result = append(result, line.Value)
+	}
+	return strings.Join(result, "\n")
+}
+
+func (c Create) DocstringYamldoc() (string, error) {
+	var yamldoc []string
+	parsing := false
+	for _, line := range c.Docstring {
+		if strings.HasPrefix(line.Value, "--!") {
+			parsing = true
+			if !strings.HasPrefix(line.Value, "--! ") {
+				return "", Error{line.Pos, "YAML document in docstring; missing space after `--!`"}
+			}
+			yamldoc = append(yamldoc, line.Value[4:])
+		} else if parsing {
+			return "", Error{line.Pos, "once embedded yaml document is started (lines prefixed with `--!`), it must continue until create statement"}
+		}
+	}
+	return strings.Join(yamldoc, "\n"), nil
+}
+
+func (c Create) ParseYamlInDocstring(out any) error {
+	yamldoc, err := c.DocstringYamldoc()
+	if err != nil {
+		return err
+	}
+	return yaml.Unmarshal([]byte(yamldoc), out)
 }
 
 type Type struct {
@@ -81,6 +116,10 @@ func (t Type) String() (result string) {
 type Error struct {
 	Pos     Pos
 	Message string
+}
+
+func (e Error) Error() string {
+	return fmt.Sprintf("%s:%d:%d %s", e.Pos.File, e.Pos.Line, e.Pos.Col, e.Message)
 }
 
 func (e Error) WithoutPos() Error {

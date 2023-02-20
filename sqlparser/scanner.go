@@ -86,7 +86,7 @@ func (s *Scanner) bumpLine(offset int) {
 	s.indexAtStopLine = s.curIndex + offset + 1
 }
 
-func (s *Scanner) SkipWhitespace() {
+func (s *Scanner) SkipWhitespaceComments() {
 	for {
 		switch s.TokenType() {
 		case WhitespaceToken, MultilineCommentToken, SinglelineCommentToken:
@@ -97,9 +97,26 @@ func (s *Scanner) SkipWhitespace() {
 	}
 }
 
+func (s *Scanner) SkipWhitespace() {
+	for {
+		switch s.TokenType() {
+		case WhitespaceToken:
+		default:
+			return
+		}
+		s.NextToken()
+	}
+}
+
 func (s *Scanner) NextNonWhitespaceToken() TokenType {
 	s.NextToken()
 	s.SkipWhitespace()
+	return s.TokenType()
+}
+
+func (s *Scanner) NextNonWhitespaceCommentToken() TokenType {
+	s.NextToken()
+	s.SkipWhitespaceComments()
 	return s.TokenType()
 }
 

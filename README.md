@@ -284,3 +284,34 @@ that either contains `[code]`, or starts with `--sqlcode`.
 The CLI command `sqlcode constants` will dump all the `declare @EnumFoo ..`
 statements in the subtree for easy copy+paste of everything into your
 debugging session.
+
+## Introspection and annotations
+
+It can be convenient to annotate stored procedures/functions with some metadata
+available to a backend. For instance, consider a backend that automatically
+exposes endpoints based on SQL queries. To aid building such things the
+Go parser, when used as a library, makes introspection data available
+such as the name of the function, arguments etc. (features here are added
+as needed).
+
+A comment immediately before a create statement is treated like a "docstring"
+and is available in the node representing the create statement in the DOM.
+There is also a convention and DOM support for an embedded YAML document
+in the docstring; the lines containing the YAML document should be prefixed
+by `!-- ` (note the space): Example:
+
+```sql
+-- Returns JSON to return for the /myentity GET endpoint
+--
+--! timeoutMs: 400
+--! runAs: myserviceuser
+--! this:
+--!  - is: ["a", "yaml", "document"]
+create procedure [code].[GET:/myentity] (@entityID bigint) as begin 
+    select 
+        [name] = Name
+    from myschema.MyEntity
+    for json path
+end
+```
+
