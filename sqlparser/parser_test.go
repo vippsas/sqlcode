@@ -271,6 +271,7 @@ create procedure [code].FirstProc as table (x int)
 	assert.Equal(t, emsg, doc.Errors[0].Message)
 }
 
+
 func TestGoWithoutNewline(t *testing.T) {
 	doc := ParseString("test.sql", `
 create procedure [code].Foo() as begin
@@ -284,4 +285,70 @@ end
 	require.Equal(t, 2, len(doc.Errors))
 	assert.Equal(t, "`go` should be alone on a line without any comments", doc.Errors[0].Message)
 	assert.Equal(t, "Expected 'declare' or 'create', got: end", doc.Errors[1].Message)
+}
+
+func TestCreateAnnotationHappyDay(t *testing.T) {
+	// Comment / annotations on create statements
+	doc := ParseString("test.sql", `
+-- Not part of annotation
+--! key4: 1
+
+-- This is part of annotation
+--! key1: a
+--! key2: b
+--! key3: [1,2,3]
+create procedure [code].Foo as begin end
+
+`)
+	assert.Equal(t,
+		"-- This is part of annotation\n--! key1: a\n--! key2: b\n--! key3: [1,2,3]",
+		doc.Creates[0].DocstringAsString())
+	s, err := doc.Creates[0].DocstringYamldoc()
+	assert.NoError(t, err)
+	assert.Equal(t,
+		"key1: a\nkey2: b\nkey3: [1,2,3]",
+		s)
+
+	var x struct {
+		Key1 string `yaml:"key1"`
+	}
+	require.NoError(t, doc.Creates[0].ParseYamlInDocstring(&x))
+	assert.Equal(t, "a", x.Key1)
+}
+
+func TestCreateAnnotationAfterPragma(t *testing.T) {
+	// Comment / annotations on create statement, with pragma at start of file
+	doc := ParseString("test.sql", `
+--sqlcode: include-if foo
+
+-- docstring here
+create procedure [code].Foo as begin end
+
+`)
+	assert.Equal(t,
+		"-- docstring here",
+		doc.Creates[0].DocstringAsString())
+}
+
+func TestCreateAnnotationErrors(t *testing.T) {
+	// Multiple embedded yaml documents ..
+	doc := ParseString("test.sql", `
+--! key4: 1
+-- This comment after yamldoc is illegal; this also prevents multiple embedded YAML documents
+create procedure [code].Foo as begin end
+`)
+	_, err := doc.Creates[0].DocstringYamldoc()
+	assert.Equal(t, "test.sql:3:1 once embedded yaml document is started (lines prefixed with `--!`), it must continue until create statement",
+		err.Error())
+
+	// No whitespace after !
+	doc = ParseString("test.sql", `
+-- Docstring here
+--!key4: 1
+create procedure [code].Foo as begin end
+`)
+	_, err = doc.Creates[0].DocstringYamldoc()
+	assert.Equal(t, "test.sql:3:1 YAML document in docstring; missing space after `--!`",
+		err.Error())
+
 }
