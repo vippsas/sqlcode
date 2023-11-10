@@ -1,10 +1,11 @@
 package sqlparser
 
 import (
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParserSmokeTest(t *testing.T) {
@@ -271,7 +272,6 @@ create procedure [code].FirstProc as table (x int)
 	assert.Equal(t, emsg, doc.Errors[0].Message)
 }
 
-
 func TestGoWithoutNewline(t *testing.T) {
 	doc := ParseString("test.sql", `
 create procedure [code].Foo() as begin
@@ -351,4 +351,67 @@ create procedure [code].Foo as begin end
 	assert.Equal(t, "test.sql:3:1 YAML document in docstring; missing space after `--!`",
 		err.Error())
 
+}
+
+func TestProcedureArgs(t *testing.T) {
+	doc := parseAndVerifyCreate(t, "test.sql", `
+create procedure [code].Foo
+  (
+	@a bigint,
+
+   @b   varchar(max) = N'asdfas
+
+lkjlkjlkjasdf'
+
+       output,
+	@c [code].[something:asf  asdf -- as
+df/ MyTableType] readonly,
+    @d numeric(1,2),@e tinyint
+) as begin end
+`)
+	create := doc.Creates[0].WithoutPos()
+
+	assert.Equal(t, []Parameter{
+		{
+			VariableName: "@a",
+			Datatype:     Type{BaseType: "bigint"},
+		},
+		{
+			VariableName: "@b",
+			Datatype:     Type{BaseType: "varchar", Args: []string{"max"}},
+			DefaultValue: Unparsed{Type: NVarcharLiteralToken, RawValue: "N'asdfas\n\nlkjlkjlkjasdf'"},
+			IsOutput:     true,
+		},
+		{
+			VariableName: "@c",
+			Datatype: Type{
+				TableTypeSchema: "[code]",
+				TableTypeName:   "[something:asf  asdf -- as\ndf/ MyTableType]",
+			},
+			IsReadonly: true,
+		},
+		{
+			VariableName: "@d",
+			Datatype: Type{
+				BaseType: "numeric",
+				Args:     []string{"1", "2"},
+			},
+		},
+		{
+			VariableName: "@e",
+			Datatype: Type{
+				BaseType: "tinyint",
+			},
+		},
+	}, create.Parameters)
+
+}
+
+// parseAndVerifyCreate expects to parse a single `create` statement, and verifies that serializing
+// it back produces the same string.
+func parseAndVerifyCreate(t *testing.T, filename FileRef, createStatement string) Document {
+	doc := ParseString(filename, createStatement)
+	require.Equal(t, 1, len(doc.Creates))
+	require.Equal(t, strings.TrimLeft(createStatement, "\n "), doc.Creates[0].String())
+	return doc
 }

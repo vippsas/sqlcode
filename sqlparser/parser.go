@@ -39,27 +39,6 @@ func NextTokenCopyingWhitespace(s *Scanner, target *[]Unparsed) {
 
 }
 
-// AdvanceAndCopy is like NextToken; advance to next token that is not whitespace and return
-// Note: The 'go' and EOF tokens are *not* copied
-func AdvanceAndCopy(s *Scanner, target *[]Unparsed) {
-	for {
-		tt := s.NextToken()
-		switch tt {
-		case EOFToken, BatchSeparatorToken:
-			// do not copy
-			return
-		case WhitespaceToken, MultilineCommentToken, SinglelineCommentToken:
-			// copy, and loop around
-			CopyToken(s, target)
-			continue
-		default:
-			// copy, and return
-			CopyToken(s, target)
-			return
-		}
-	}
-}
-
 func CreateUnparsed(s *Scanner) Unparsed {
 	return Unparsed{
 		Type:     s.TokenType(),
@@ -80,27 +59,29 @@ func (d *Document) unexpectedTokenError(s *Scanner) {
 	d.addError(s, "Unexpected: "+s.Token())
 }
 
-func (doc *Document) parseTypeExpression(s *Scanner) (t Type) {
+func (doc *Document) parseTypeExpression(s *Scanner, allowTableTypes bool, target *[]Unparsed) (result Type) {
 	parseArgs := func() {
 		// parses *after* the initial (; consumes trailing )
 		for {
+			CopyToken(s, target)
 			switch {
 			case s.TokenType() == NumberToken:
-				t.Args = append(t.Args, s.Token())
+				result.Args = append(result.Args, s.Token())
 			case s.TokenType() == UnquotedIdentifierToken && s.TokenLower() == "max":
-				t.Args = append(t.Args, "max")
+				result.Args = append(result.Args, "max")
 			default:
 				doc.unexpectedTokenError(s)
 				doc.recoverToNextStatement(s)
 				return
 			}
-			s.NextNonWhitespaceCommentToken()
+			NextTokenCopyingWhitespace(s, target)
+			CopyToken(s, target)
 			switch {
 			case s.TokenType() == CommaToken:
-				s.NextNonWhitespaceCommentToken()
+				NextTokenCopyingWhitespace(s, target)
 				continue
 			case s.TokenType() == RightParenToken:
-				s.NextNonWhitespaceCommentToken()
+				NextTokenCopyingWhitespace(s, target)
 				return
 			default:
 				doc.unexpectedTokenError(s)
@@ -110,14 +91,37 @@ func (doc *Document) parseTypeExpression(s *Scanner) (t Type) {
 		}
 	}
 
-	if s.TokenType() != UnquotedIdentifierToken {
-		panic("assertion failed, bug in caller")
+	if s.TokenType() != UnquotedIdentifierToken && s.TokenType() != QuotedIdentifierToken {
+		doc.addError(s, "expected type, got: "+s.Token())
+		return
 	}
-	t.BaseType = s.Token()
-	s.NextNonWhitespaceCommentToken()
-	if s.TokenType() == LeftParenToken {
-		s.NextNonWhitespaceCommentToken()
-		parseArgs()
+	// We will assume that a table type will have a schema name; types in 'default schema' we just don'result support.
+	// So an identifier followed by a `.` indicates table type.
+	firstToken := s.Token()
+	CopyToken(s, target)
+	NextTokenCopyingWhitespace(s, target)
+
+	if s.TokenType() == DotToken {
+		if !allowTableTypes {
+			doc.addError(s, "expected basic type (no table types), got: .")
+			return
+		}
+		CopyToken(s, target)
+		NextTokenCopyingWhitespace(s, target)
+
+		// parse a table type
+		result.TableTypeSchema = firstToken
+		result.TableTypeName = s.Token()
+		CopyToken(s, target)
+		NextTokenCopyingWhitespace(s, target)
+	} else {
+		// parse a basic type
+		result.BaseType = firstToken
+		if s.TokenType() == LeftParenToken {
+			CopyToken(s, target)
+			NextTokenCopyingWhitespace(s, target)
+			parseArgs()
+		}
 	}
 	return
 }
@@ -146,7 +150,10 @@ loop:
 			doc.addError(s, "sqlcode constants needs a type declared explicitly")
 			s.NextNonWhitespaceCommentToken()
 		case UnquotedIdentifierToken:
-			variableType = doc.parseTypeExpression(s)
+			// parseTypeExpression is also used in a context where we are copying Unparsed nodes into stored procedure body;
+			// to use it here too just use a dummy output
+			var dummy []Unparsed
+			variableType = doc.parseTypeExpression(s, false, &dummy)
 		}
 
 		if s.TokenType() != EqualToken {
@@ -366,6 +373,81 @@ func (d *Document) parseCodeschemaName(s *Scanner, target *[]Unparsed) PosString
 	}
 }
 
+func (d *Document) parseArgumentList(s *Scanner, target *[]Unparsed) (result []Parameter) {
+	if s.TokenType() != LeftParenToken {
+		panic("assertion failed: should only be called on the ( position")
+	}
+	// Copy the `(`
+	CopyToken(s, target)
+	NextTokenCopyingWhitespace(s, target)
+
+	for s.TokenType() != RightParenToken {
+		var parameter Parameter
+
+		// `@parameter`
+		if s.TokenType() != VariableIdentifierToken {
+			d.addError(s, "expected a parameter name starting with @, got: "+s.Token())
+			return
+		}
+
+		parameter.Start = s.Start()
+		parameter.VariableName = s.Token()
+		CopyToken(s, target)
+		NextTokenCopyingWhitespace(s, target)
+
+		// datatype. This can either be a table type or a basic type...
+		parameter.Datatype = d.parseTypeExpression(s, true, target)
+
+		// Do we have a default value?
+		if s.TokenType() == EqualToken {
+			// Default value. AFAICT this can only be a single literal, not a full expression
+			CopyToken(s, target)
+			NextTokenCopyingWhitespace(s, target)
+			switch s.TokenType() {
+			case NVarcharLiteralToken, VarcharLiteralToken, NumberToken:
+				parameter.DefaultValue = CreateUnparsed(s)
+			default:
+				d.addError(s, "expecting default value literal, got: "+s.Token())
+				return
+			}
+			CopyToken(s, target)
+			NextTokenCopyingWhitespace(s, target)
+		}
+
+		// Do we have an option? This can be *either* readonly or output, both would not be relevant on the same
+		if s.TokenType() == UnquotedIdentifierToken {
+			// readonly or output
+			switch s.TokenLower() {
+			case "readonly":
+				parameter.IsReadonly = true
+			case "output":
+				parameter.IsOutput = true
+			default:
+				d.addError(s, "parsing argument list, unexpected: "+s.Token())
+				return
+			}
+			CopyToken(s, target)
+			NextTokenCopyingWhitespace(s, target)
+		}
+
+		// At this point we should have a comma or a right paren...
+		switch s.TokenType() {
+		case CommaToken:
+			CopyToken(s, target)
+			NextTokenCopyingWhitespace(s, target)
+			// Trailing comma won't be an error in this parser; but SQL will complain later..
+		case RightParenToken:
+			// fall through to break out of loop
+		default:
+			d.addError(s, "parsing argument list, unexpected: "+s.Token())
+			return
+		}
+
+		result = append(result, parameter)
+	}
+	return
+}
+
 // parseCreate parses anything that starts with "create". Position is
 // *on* the create token.
 // At this stage in sqlcode parser development we're only interested
@@ -411,8 +493,13 @@ func (d *Document) parseCreate(s *Scanner, createCountInBatch int) (result Creat
 		return
 	}
 
-	// We have matched "create <createType> [code].<quotedName>"; at this
-	// point we copy the rest until the batch ends; *but* track dependencies
+	// We have matched "create <createType> [code].<quotedName>". Try to parse
+	// parameters. Procedures do not need an argument list, so only do this if we see ()
+	if createType == "procedure" && s.tokenType == LeftParenToken {
+		result.Parameters = d.parseArgumentList(s, &result.Body)
+	}
+
+	// At this point we copy the rest until the batch ends; *but* track dependencies
 	// + some other details mentioned below
 
 tailloop:
