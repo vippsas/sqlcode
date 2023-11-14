@@ -1,5 +1,7 @@
 module github.com/vippsas/sqlcode
 
+replace github.com/denisenkom/go-mssqldb => github.com/vippsas/go-mssqldb v0.0.0-20220825095447-ac564d3d42aa
+
 go 1.18
 
 require (
