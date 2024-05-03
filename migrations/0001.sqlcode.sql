@@ -78,7 +78,6 @@ as begin
 	set @curVFP = cursor local read_only forward_only for
 	    select
 	        concat('drop ', v.DropType, ' ', quotename(@schemaname), '.', quotename(o.name)),
-	        concat(';', char(10))
 	    from sys.objects as o
 	    cross apply ( values ( case
 	        when o.type = 'FN' then 'function'
@@ -108,7 +107,6 @@ as begin
 	set @curT = cursor local read_only forward_only for
 	    select
                 concat('drop type ', quotename(@schemaname), '.', quotename(t.name)),
-                concat(';', char(10))
             from sys.types as t 
 	    where t.schema_id = @schemaid;
 	
