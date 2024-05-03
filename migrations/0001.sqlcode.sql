@@ -74,32 +74,53 @@ as begin
         end
 
         -- Drop views, functions, procedures
-        select
-                @sql = string_agg(
-                    concat('drop ', v.DropType, ' ', quotename(@schemaname), '.', quotename(o.name)),
-                    concat(';', char(10)))
-        from sys.objects as o
-        cross apply ( values ( case
-            when o.type = 'FN' then 'function'
-            when o.type = 'IF' then 'function'
-            when o.type = 'TF' then 'function'
-            when o.type = 'P' then 'procedure'
-            when o.type = 'PC' then 'procedure'
-            when o.type = 'V' then 'view'
-        end )) v(DropType)
-        where
-            o.schema_id = @schemaid and v.DropType is not null;
-        exec sp_executesql @sql;
+	declare @curVFP cursor; -- VFP: views, functions, procedures
+	set @curVFP = cursor local read_only forward_only for
+	    select
+	        concat('drop ', v.DropType, ' ', quotename(@schemaname), '.', quotename(o.name)),
+	        concat(';', char(10))
+	    from sys.objects as o
+	    cross apply ( values ( case
+	        when o.type = 'FN' then 'function'
+	        when o.type = 'IF' then 'function'
+	        when o.type = 'TF' then 'function'
+	        when o.type = 'P' then 'procedure'
+	        when o.type = 'PC' then 'procedure'
+	        when o.type = 'V' then 'view'
+	    end )) v(DropType)
+	    where o.schema_id = @schemaid and v.DropType is not null;
+
+	open @curVFP
+
+	declare @sql nvarchar(max);
+
+	while 1 = 1
+	begin
+	    fetch next from @curVFP into @sql;
+	    exec sp_executesql @sql;
+	end
+
+	close @curVFP
+	deallocate @curVFP
 
         -- Drop types
-        select
-            @sql = string_agg(
+	declare @curT -- T: types
+	set @curT = cursor local read_only forward_only for
+	    select
                 concat('drop type ', quotename(@schemaname), '.', quotename(t.name)),
-                concat(';', char(10)))
-        from sys.types as t
-        where
-            t.schema_id = @schemaid;
-        exec sp_executesql @sql;
+                concat(';', char(10))
+            from sys.types as t 
+	    where t.schema_id = @schemaid;
+	
+	open @curT
+	while 1 = 1
+	begin
+	    fetch next from @curT into @sql;
+	    exec sp_executesql @sql;
+	end
+
+	closes @curT
+	deallocate @curT
 
         -- Finally drop the schema itself
         set @sql = concat('drop schema ', quotename(@schemaname))
