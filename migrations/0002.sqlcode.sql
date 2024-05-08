@@ -42,8 +42,8 @@ as begin
 	fetch next from @curVFP into @sql;
 	while (@@fetch_status = 0)
 	begin
-	    fetch next from @curVFP into @sql;
 	    exec sp_executesql @sql;
+		fetch next from @curVFP into @sql;
 	end
 
 	close @curVFP
@@ -62,8 +62,8 @@ as begin
 	fetch next from @curT into @sql;
 	while (@@fetch_status = 0)
 	begin
-	    fetch next from @curT into @sql;
 	    exec sp_executesql @sql;
+		fetch next from @curT into @sql;
 	end
 
 	close @curT
