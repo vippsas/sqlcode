@@ -53,9 +53,9 @@ as begin
 	set @curT = cursor local read_only forward_only for
 	    select
                 concat('drop type ', quotename(@schemaname), '.', quotename(t.name))
-            from sys.types as t 
+            from sys.types as t
 	    where t.schema_id = @schemaid;
-	
+
 	open @curT
 	while 1 = 1
 	begin
@@ -63,7 +63,7 @@ as begin
 	    exec sp_executesql @sql;
 	end
 
-	closes @curT
+	close @curT
 	deallocate @curT
 
         -- Finally drop the schema itself
