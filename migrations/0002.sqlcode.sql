@@ -39,7 +39,8 @@ as begin
 
 	open @curVFP
 
-	while 1 = 1
+	fetch next from @curVFP into @sql;
+	while (@@fetch_status = 0)
 	begin
 	    fetch next from @curVFP into @sql;
 	    exec sp_executesql @sql;
@@ -57,7 +58,9 @@ as begin
 	    where t.schema_id = @schemaid;
 
 	open @curT
-	while 1 = 1
+
+	fetch next from @curT into @sql;
+	while (@@fetch_status = 0)
 	begin
 	    fetch next from @curT into @sql;
 	    exec sp_executesql @sql;
