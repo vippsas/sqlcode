@@ -2,9 +2,10 @@ package sqlparser
 
 import (
 	"fmt"
-	"gopkg.in/yaml.v3"
 	"io"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Unparsed struct {
@@ -59,12 +60,35 @@ func (p PosString) String() string {
 	return p.Value
 }
 
+type Parameter struct {
+	Start Pos
+	Stop  Pos
+
+	VariableName string
+	Datatype     Type
+
+	// Attributes only relevant for procedures:
+	DefaultValue Unparsed
+	IsReadonly   bool
+	IsOutput     bool
+}
+
+func (p Parameter) WithoutPos() (result Parameter) {
+	result = p
+	result.Start = Pos{}
+	result.Stop = Pos{}
+	result.DefaultValue.Start = Pos{}
+	result.DefaultValue.Stop = Pos{}
+	return
+}
+
 type Create struct {
 	CreateType string    // "procedure", "function" or "type"
 	QuotedName PosString // proc/func/type name, including []
 	Body       []Unparsed
 	DependsOn  []PosString
 	Docstring  []PosString // comment lines before the create statement. Note: this is also part of Body
+	Parameters []Parameter
 }
 
 func (c Create) DocstringAsString() string {
@@ -100,9 +124,14 @@ func (c Create) ParseYamlInDocstring(out any) error {
 	return yaml.Unmarshal([]byte(yamldoc), out)
 }
 
+// Type indicates the type of a parameter. It can either be a basic type in which case BaseType and Args are set;
+// or a table type in which case TableTypeSchema and TableTypeName is set.
 type Type struct {
 	BaseType string
 	Args     []string
+
+	TableTypeSchema string
+	TableTypeName   string
 }
 
 func (t Type) String() (result string) {
@@ -165,11 +194,16 @@ func (c Create) WithoutPos() Create {
 	for _, x := range c.Body {
 		body = append(body, x.WithoutPos())
 	}
+	var parameters []Parameter
+	for _, x := range c.Parameters {
+		parameters = append(parameters, x.WithoutPos())
+	}
 	return Create{
 		CreateType: c.CreateType,
 		QuotedName: c.QuotedName,
 		DependsOn:  c.DependsOn,
 		Body:       body,
+		Parameters: parameters,
 	}
 }
 
