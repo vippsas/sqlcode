@@ -415,7 +415,7 @@ func (d *Document) parseCreate(s *Scanner, createCountInBatch int) (result Creat
 	// point we copy the rest until the batch ends; *but* track dependencies
 	// + some other details mentioned below
 
-	startOfProcedure := true
+	firstAs := true
 
 tailloop:
 	for {
@@ -471,7 +471,7 @@ tailloop:
 		case tt == ReservedWordToken && s.Token() == "as":
 			CopyToken(s, &result.Body)
 			NextTokenCopyingWhitespace(s, &result.Body)
-			if startOfProcedure { //&& tt == ReservedWordToken && s.Token() != "begin" {
+			if firstAs { //&& tt == ReservedWordToken && s.Token() != "begin" {
 				// Add the `ProcName` token to a procedure
 				// The `ProcName` token is just a convenience so that
 				// we can refer to the procedure's name inside the procedure
@@ -483,10 +483,10 @@ tailloop:
 					}
 					result.Body = append(result.Body, procNameToken)
 				}
+				firstAs = false
 			}
 
 		default:
-			startOfProcedure = false
 			CopyToken(s, &result.Body)
 			NextTokenCopyingWhitespace(s, &result.Body)
 		}

@@ -1,6 +1,7 @@
 package sqlparser
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -273,15 +274,41 @@ create procedure [code].FirstProc as table (x int)
 }
 
 func TestCreateProcsAndCheckForProcName(t *testing.T) {
-	doc := ParseString("test.sql", `
+	testcases := []struct {
+		name             string
+		doc              Document
+		expectedProcName string
+		expectedIndex    int
+	}{
+		{
+			name:             "Test simple proc",
+			expectedProcName: "FirstProc",
+			doc: ParseString("test.sql", `
 create procedure [code].FirstProc as
 begin
 end
-`)
-	require.Equal(t, 0, len(doc.Errors))
-	assert.Len(t, doc.Creates, 1)
-	assert.Greater(t, len(doc.Creates[0].Body), 10)
-	assert.Equal(t, doc.Creates[0].Body[10].RawValue, "DECLARE @ProcName NVARCHAR(128)\nSET @ProcName = 'FirstProc'\n")
+`),
+			expectedIndex: 10,
+		},
+		{
+			name:             "Test proc with args",
+			expectedProcName: "transform:safeguarding.Calculation/HEAD",
+			doc: ParseString("test.sql", `
+create procedure [code].[transform:safeguarding.Calculation/HEAD](@now datetime2,
+@count bigint output) as
+`),
+			expectedIndex: 22,
+		},
+	}
+	for _, tc := range testcases {
+		require.Equal(t, 0, len(tc.doc.Errors))
+		assert.Len(t, tc.doc.Creates, 1)
+		assert.Greater(t, len(tc.doc.Creates[0].Body), tc.expectedIndex)
+		assert.Equal(t,
+			fmt.Sprintf("DECLARE @ProcName NVARCHAR(128)\nSET @ProcName = '%s'\n", tc.expectedProcName),
+			tc.doc.Creates[0].Body[tc.expectedIndex].RawValue,
+		)
+	}
 }
 
 func TestGoWithoutNewline(t *testing.T) {
