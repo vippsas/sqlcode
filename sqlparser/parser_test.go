@@ -1,10 +1,11 @@
 package sqlparser
 
 import (
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParserSmokeTest(t *testing.T) {
@@ -271,6 +272,19 @@ create procedure [code].FirstProc as table (x int)
 	assert.Equal(t, emsg, doc.Errors[0].Message)
 }
 
+func TestCreateProcsAndCheckForProcName(t *testing.T) {
+	doc := ParseString("test.sql", `
+create procedure [code].FirstProc as table (x int)
+begin
+end
+`)
+	require.Equal(t, 0, len(doc.Errors))
+	assert.Len(t, doc.Creates, 1)
+	// TODO(dsf)
+	for i, unparsed := range doc.Creates[0].Body {
+		println(i, unparsed.RawValue)
+	}
+}
 
 func TestGoWithoutNewline(t *testing.T) {
 	doc := ParseString("test.sql", `
