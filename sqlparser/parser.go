@@ -412,8 +412,7 @@ func (d *Document) parseCreate(s *Scanner, createCountInBatch int) (result Creat
 	}
 
 	// We have matched "create <createType> [code].<quotedName>"; at this
-	// point
-	// and then copy the rest of the sql until the batch ends; *but* track dependencies
+	// point we copy the rest until the batch ends; *but* track dependencies
 	// + some other details mentioned below
 
 	startOfProcedure := true
@@ -472,7 +471,7 @@ tailloop:
 		case tt == ReservedWordToken && s.Token() == "as":
 			CopyToken(s, &result.Body)
 			NextTokenCopyingWhitespace(s, &result.Body)
-			if startOfProcedure && tt == ReservedWordToken && s.Token() != "begin" {
+			if startOfProcedure { //&& tt == ReservedWordToken && s.Token() != "begin" {
 				// Add the `ProcName` token to a procedure
 				// The `ProcName` token is just a convenience so that
 				// we can refer to the procedure's name inside the procedure
@@ -480,7 +479,7 @@ tailloop:
 				if result.CreateType == "procedure" {
 					procNameToken := Unparsed{
 						Type:     OtherToken,
-						RawValue: fmt.Sprintf("DECLARE @ProcName NVARCHAR(128)\nSET @ProcName = '%s'", strings.Trim(result.QuotedName.Value, "[]")),
+						RawValue: fmt.Sprintf("DECLARE @ProcName NVARCHAR(128)\nSET @ProcName = '%s'\n", strings.Trim(result.QuotedName.Value, "[]")),
 					}
 					result.Body = append(result.Body, procNameToken)
 				}

@@ -274,16 +274,14 @@ create procedure [code].FirstProc as table (x int)
 
 func TestCreateProcsAndCheckForProcName(t *testing.T) {
 	doc := ParseString("test.sql", `
-create procedure [code].FirstProc as table (x int)
+create procedure [code].FirstProc as
 begin
 end
 `)
 	require.Equal(t, 0, len(doc.Errors))
 	assert.Len(t, doc.Creates, 1)
-	// TODO(dsf)
-	for i, unparsed := range doc.Creates[0].Body {
-		println(i, unparsed.RawValue)
-	}
+	assert.Greater(t, len(doc.Creates[0].Body), 10)
+	assert.Equal(t, doc.Creates[0].Body[10].RawValue, "DECLARE @ProcName NVARCHAR(128)\nSET @ProcName = 'FirstProc'\n")
 }
 
 func TestGoWithoutNewline(t *testing.T) {
