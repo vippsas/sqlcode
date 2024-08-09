@@ -472,14 +472,14 @@ tailloop:
 			CopyToken(s, &result.Body)
 			NextTokenCopyingWhitespace(s, &result.Body)
 			if firstAs { //&& tt == ReservedWordToken && s.Token() != "begin" {
-				// Add the `ProcName` token to a procedure
-				// The `ProcName` token is just a convenience so that
-				// we can refer to the procedure's name inside the procedure
+				// Add the `RoutineName` token to a procedure
+				// The `RoutineName` token is just a convenience so that
+				// we can refer to the procedure/function name inside the procedure
 				// (for example, when logging)
 				if result.CreateType == "procedure" {
 					procNameToken := Unparsed{
 						Type:     OtherToken,
-						RawValue: fmt.Sprintf("DECLARE @ProcName NVARCHAR(128)\nSET @ProcName = '%s'\n", strings.Trim(result.QuotedName.Value, "[]")),
+						RawValue: fmt.Sprintf("DECLARE @RoutineName NVARCHAR(128)\nSET @RoutineName = '%s'\n", strings.Trim(result.QuotedName.Value, "[]")),
 					}
 					result.Body = append(result.Body, procNameToken)
 				}

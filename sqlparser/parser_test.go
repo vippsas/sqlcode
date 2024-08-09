@@ -273,7 +273,7 @@ create procedure [code].FirstProc as table (x int)
 	assert.Equal(t, emsg, doc.Errors[0].Message)
 }
 
-func TestCreateProcsAndCheckForProcName(t *testing.T) {
+func TestCreateProcsAndCheckForRoutineName(t *testing.T) {
 	testcases := []struct {
 		name             string
 		doc              Document
@@ -305,7 +305,7 @@ create procedure [code].[transform:safeguarding.Calculation/HEAD](@now datetime2
 		assert.Len(t, tc.doc.Creates, 1)
 		assert.Greater(t, len(tc.doc.Creates[0].Body), tc.expectedIndex)
 		assert.Equal(t,
-			fmt.Sprintf("DECLARE @ProcName NVARCHAR(128)\nSET @ProcName = '%s'\n", tc.expectedProcName),
+			fmt.Sprintf("DECLARE @RoutineName NVARCHAR(128)\nSET @RoutineName = '%s'\n", tc.expectedProcName),
 			tc.doc.Creates[0].Body[tc.expectedIndex].RawValue,
 		)
 	}
