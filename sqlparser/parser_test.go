@@ -46,16 +46,16 @@ end;
 
 	assert.Equal(t, "[TestFunc]", c.QuotedName.Value)
 	assert.Equal(t, []string{"[HelloFunc]", "[OtherFunc]"}, c.DependsOnStrings())
-	assert.Equal(t, `-- preceding comment 1
+	assert.Equal(t, fmt.Sprintf(`-- preceding comment 1
 /* preceding comment 2
 
-asdfasdf */create procedure [code].TestFunc as begin
+asdfasdf */create procedure [code].TestFunc as %sbegin
   refers to [code].OtherFunc [code].HelloFunc;
   create table x ( int x not null );  -- should be ok
 end;
 
 /* trailing comment */
-`, c.String())
+`, fmt.Sprintf(templateRoutineName, "TestFunc")), c.String())
 
 	assert.Equal(t,
 		[]Error{
@@ -305,7 +305,7 @@ create procedure [code].[transform:safeguarding.Calculation/HEAD](@now datetime2
 		assert.Len(t, tc.doc.Creates, 1)
 		assert.Greater(t, len(tc.doc.Creates[0].Body), tc.expectedIndex)
 		assert.Equal(t,
-			fmt.Sprintf("DECLARE @RoutineName NVARCHAR(128)\nSET @RoutineName = '%s'\n", tc.expectedProcName),
+			fmt.Sprintf(templateRoutineName, tc.expectedProcName),
 			tc.doc.Creates[0].Body[tc.expectedIndex].RawValue,
 		)
 	}

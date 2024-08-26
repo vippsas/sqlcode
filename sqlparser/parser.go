@@ -14,6 +14,8 @@ import (
 	"strings"
 )
 
+var templateRoutineName string = "\ndeclare @RoutineName nvarchar(128)\nset @RoutineName = '%s'\n"
+
 func CopyToken(s *Scanner, target *[]Unparsed) {
 	*target = append(*target, CreateUnparsed(s))
 }
@@ -477,7 +479,7 @@ tailloop:
 				if result.CreateType == "procedure" {
 					procNameToken := Unparsed{
 						Type:     OtherToken,
-						RawValue: fmt.Sprintf("DECLARE @RoutineName NVARCHAR(128)\nSET @RoutineName = '%s'\n", strings.Trim(result.QuotedName.Value, "[]")),
+						RawValue: fmt.Sprintf(templateRoutineName, strings.Trim(result.QuotedName.Value, "[]")),
 					}
 					result.Body = append(result.Body, procNameToken)
 				}
