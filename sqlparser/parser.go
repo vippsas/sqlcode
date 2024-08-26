@@ -471,11 +471,9 @@ tailloop:
 		case tt == ReservedWordToken && s.Token() == "as":
 			CopyToken(s, &result.Body)
 			NextTokenCopyingWhitespace(s, &result.Body)
-			if firstAs { //&& tt == ReservedWordToken && s.Token() != "begin" {
-				// Add the `RoutineName` token to a procedure
-				// The `RoutineName` token is just a convenience so that
-				// we can refer to the procedure/function name inside the procedure
-				// (for example, when logging)
+			if firstAs {
+				// Add the `RoutineName` token as a convenience, so that we can refer to the procedure/function name
+				// from inside the procedure (for example, when logging)
 				if result.CreateType == "procedure" {
 					procNameToken := Unparsed{
 						Type:     OtherToken,
