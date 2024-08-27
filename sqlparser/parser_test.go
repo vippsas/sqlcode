@@ -1,10 +1,12 @@
 package sqlparser
 
 import (
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParserSmokeTest(t *testing.T) {
@@ -44,16 +46,16 @@ end;
 
 	assert.Equal(t, "[TestFunc]", c.QuotedName.Value)
 	assert.Equal(t, []string{"[HelloFunc]", "[OtherFunc]"}, c.DependsOnStrings())
-	assert.Equal(t, `-- preceding comment 1
+	assert.Equal(t, fmt.Sprintf(`-- preceding comment 1
 /* preceding comment 2
 
-asdfasdf */create procedure [code].TestFunc as begin
+asdfasdf */create procedure [code].TestFunc as %sbegin
   refers to [code].OtherFunc [code].HelloFunc;
   create table x ( int x not null );  -- should be ok
 end;
 
 /* trailing comment */
-`, c.String())
+`, fmt.Sprintf(templateRoutineName, "TestFunc")), c.String())
 
 	assert.Equal(t,
 		[]Error{
@@ -271,6 +273,43 @@ create procedure [code].FirstProc as table (x int)
 	assert.Equal(t, emsg, doc.Errors[0].Message)
 }
 
+func TestCreateProcsAndCheckForRoutineName(t *testing.T) {
+	testcases := []struct {
+		name             string
+		doc              Document
+		expectedProcName string
+		expectedIndex    int
+	}{
+		{
+			name:             "Test simple proc",
+			expectedProcName: "FirstProc",
+			doc: ParseString("test.sql", `
+create procedure [code].FirstProc as
+begin
+end
+`),
+			expectedIndex: 10,
+		},
+		{
+			name:             "Test proc with args",
+			expectedProcName: "transform:safeguarding.Calculation/HEAD",
+			doc: ParseString("test.sql", `
+create procedure [code].[transform:safeguarding.Calculation/HEAD](@now datetime2,
+@count bigint output) as
+`),
+			expectedIndex: 22,
+		},
+	}
+	for _, tc := range testcases {
+		require.Equal(t, 0, len(tc.doc.Errors))
+		assert.Len(t, tc.doc.Creates, 1)
+		assert.Greater(t, len(tc.doc.Creates[0].Body), tc.expectedIndex)
+		assert.Equal(t,
+			fmt.Sprintf(templateRoutineName, tc.expectedProcName),
+			tc.doc.Creates[0].Body[tc.expectedIndex].RawValue,
+		)
+	}
+}
 
 func TestGoWithoutNewline(t *testing.T) {
 	doc := ParseString("test.sql", `

@@ -14,6 +14,8 @@ import (
 	"strings"
 )
 
+var templateRoutineName string = "\ndeclare @RoutineName nvarchar(128)\nset @RoutineName = '%s'\n"
+
 func CopyToken(s *Scanner, target *[]Unparsed) {
 	*target = append(*target, CreateUnparsed(s))
 }
@@ -415,6 +417,8 @@ func (d *Document) parseCreate(s *Scanner, createCountInBatch int) (result Creat
 	// point we copy the rest until the batch ends; *but* track dependencies
 	// + some other details mentioned below
 
+	firstAs := true
+
 tailloop:
 	for {
 		tt := s.TokenType()
@@ -466,6 +470,22 @@ tailloop:
 			if !found {
 				result.DependsOn = append(result.DependsOn, dep)
 			}
+		case tt == ReservedWordToken && s.Token() == "as":
+			CopyToken(s, &result.Body)
+			NextTokenCopyingWhitespace(s, &result.Body)
+			if firstAs {
+				// Add the `RoutineName` token as a convenience, so that we can refer to the procedure/function name
+				// from inside the procedure (for example, when logging)
+				if result.CreateType == "procedure" {
+					procNameToken := Unparsed{
+						Type:     OtherToken,
+						RawValue: fmt.Sprintf(templateRoutineName, strings.Trim(result.QuotedName.Value, "[]")),
+					}
+					result.Body = append(result.Body, procNameToken)
+				}
+				firstAs = false
+			}
+
 		default:
 			CopyToken(s, &result.Body)
 			NextTokenCopyingWhitespace(s, &result.Body)
