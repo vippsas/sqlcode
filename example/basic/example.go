@@ -2,6 +2,7 @@ package example
 
 import (
 	"embed"
+
 	"github.com/vippsas/sqlcode"
 )
 
@@ -9,4 +10,7 @@ import (
 //go:embed */*.sql
 var sqlfs embed.FS
 
-var SQL = sqlcode.MustInclude(sqlfs, "example")
+var SQL = sqlcode.MustInclude(
+	sqlcode.Options{},
+	sqlfs,
+)
