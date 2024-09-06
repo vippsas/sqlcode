@@ -3,7 +3,7 @@ module github.com/vippsas/sqlcode
 go 1.18
 
 require (
-	github.com/alecthomas/repr v0.1.0
+	github.com/alecthomas/repr v0.4.0
 	github.com/denisenkom/go-mssqldb v0.12.2
 	github.com/gofrs/uuid v4.2.0+incompatible
 	github.com/pkg/errors v0.9.1
