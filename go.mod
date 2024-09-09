@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/alecthomas/repr v0.4.0
 	github.com/denisenkom/go-mssqldb v0.12.3
-	github.com/gofrs/uuid v4.2.0+incompatible
+	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.3
 	github.com/smasher164/xid v0.1.1
