@@ -2,10 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/vippsas/sqlcode"
-	"os"
 )
 
 func dep(partialParseResults bool) (d sqlcode.Deployable, err error) {
@@ -39,7 +40,7 @@ var (
 				fmt.Println("No SQL code found in given paths")
 			}
 			if len(d.CodeBase.Errors) > 0 {
-				fmt.Println("Errors:\n")
+				fmt.Println("Errors:")
 				for _, e := range d.CodeBase.Errors {
 					fmt.Printf("%s:%d:%d: %s\n", e.Pos.File, e.Pos.Line, e.Pos.Line, e.Message)
 				}
