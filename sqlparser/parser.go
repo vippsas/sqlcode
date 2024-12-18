@@ -417,7 +417,7 @@ func (d *Document) parseCreate(s *Scanner, createCountInBatch int) (result Creat
 	// point we copy the rest until the batch ends; *but* track dependencies
 	// + some other details mentioned below
 
-	firstAs := true
+	//firstAs := true // See comment below on rowcount
 
 tailloop:
 	for {
@@ -473,18 +473,41 @@ tailloop:
 		case tt == ReservedWordToken && s.Token() == "as":
 			CopyToken(s, &result.Body)
 			NextTokenCopyingWhitespace(s, &result.Body)
-			if firstAs {
-				// Add the `RoutineName` token as a convenience, so that we can refer to the procedure/function name
-				// from inside the procedure (for example, when logging)
-				if result.CreateType == "procedure" {
-					procNameToken := Unparsed{
-						Type:     OtherToken,
-						RawValue: fmt.Sprintf(templateRoutineName, strings.Trim(result.QuotedName.Value, "[]")),
+			/*
+					    TODO: Fix and re-enable
+						This code add RoutineName for convenience.  So:
+
+						create procedure [code@5420c0269aaf].Test as
+						begin
+							select 1
+						end
+						go
+
+						becomes:
+
+						create procedure [code@5420c0269aaf].Test as
+						declare @RoutineName nvarchar(128)
+						set @RoutineName = 'Test'
+						begin
+							select 1
+						end
+						go
+
+						However, for some very strange reason, @@rowcount is 1 with the first version,
+						and it is 2 with the second version.
+				if firstAs {
+					// Add the `RoutineName` token as a convenience, so that we can refer to the procedure/function name
+					// from inside the procedure (for example, when logging)
+					if result.CreateType == "procedure" {
+						procNameToken := Unparsed{
+							Type:     OtherToken,
+							RawValue: fmt.Sprintf(templateRoutineName, strings.Trim(result.QuotedName.Value, "[]")),
+						}
+						result.Body = append(result.Body, procNameToken)
 					}
-					result.Body = append(result.Body, procNameToken)
+					firstAs = false
 				}
-				firstAs = false
-			}
+			*/
 
 		default:
 			CopyToken(s, &result.Body)

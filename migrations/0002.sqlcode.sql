@@ -1,5 +1,5 @@
 -- We want to re-create the procedure DropCodeSchema.
--- Frist, everything related to this procedure must be dropped
+-- First, everything related to this procedure must be dropped
 -- before it is re-created in the end.
 
 drop procedure sqlcode.DropCodeSchema;

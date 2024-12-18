@@ -46,16 +46,16 @@ end;
 
 	assert.Equal(t, "[TestFunc]", c.QuotedName.Value)
 	assert.Equal(t, []string{"[HelloFunc]", "[OtherFunc]"}, c.DependsOnStrings())
-	assert.Equal(t, fmt.Sprintf(`-- preceding comment 1
+	assert.Equal(t, `-- preceding comment 1
 /* preceding comment 2
 
-asdfasdf */create procedure [code].TestFunc as %sbegin
+asdfasdf */create procedure [code].TestFunc as begin
   refers to [code].OtherFunc [code].HelloFunc;
   create table x ( int x not null );  -- should be ok
 end;
 
 /* trailing comment */
-`, fmt.Sprintf(templateRoutineName, "TestFunc")), c.String())
+`, c.String())
 
 	assert.Equal(t,
 		[]Error{
@@ -274,6 +274,7 @@ create procedure [code].FirstProc as table (x int)
 }
 
 func TestCreateProcsAndCheckForRoutineName(t *testing.T) {
+	t.Skip() // Routine name is disabled for now
 	testcases := []struct {
 		name             string
 		doc              Document
