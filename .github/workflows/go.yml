@@ -23,4 +23,5 @@ jobs:
         run: docker compose -f docker-compose.test.yml up -d
 
       - name: Test
-        run: go test -v ./...
+        # Skip the example folder because it has examples of what-not-to-do
+        run: go test -v $(go list ./... | grep -v './example')
