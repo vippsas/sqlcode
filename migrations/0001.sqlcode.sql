@@ -133,6 +133,3 @@ grant execute on sqlcode.DropCodeSchema to [sqlcode-deploy-role];
 grant create procedure to [sqlcode-deploy-role];
 grant create function to [sqlcode-deploy-role];
 grant create type to [sqlcode-deploy-role];
-
-
-alter user
