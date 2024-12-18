@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
@@ -23,7 +24,7 @@ var (
 				fmt.Println("No SQL code found in given paths")
 			}
 			if len(d.CodeBase.Errors) > 0 {
-				fmt.Println("Errors:\n")
+				fmt.Println("Errors:")
 				for _, e := range d.CodeBase.Errors {
 					fmt.Printf("%s:%d:%d: %s\n", e.Pos.File, e.Pos.Line, e.Pos.Line, e.Message)
 				}

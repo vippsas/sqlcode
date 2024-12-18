@@ -1,0 +1,27 @@
+# This workflow will build a golang project
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+
+name: go-querysql-test
+
+on:
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.20'
+
+      - name: Start db
+        run: docker compose -f docker-compose.test.yml up -d
+
+      - name: Test
+        # Skip the example folder because it has examples of what-not-to-do
+        run: go test -v $(go list ./... | grep -v './example')
