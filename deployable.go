@@ -4,12 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	mssql "github.com/denisenkom/go-mssqldb"
-	"github.com/pkg/errors"
-	"github.com/vippsas/sqlcode/sqlparser"
 	"io/fs"
 	"strconv"
 	"strings"
+
+	mssql "github.com/microsoft/go-mssqldb"
+	"github.com/pkg/errors"
+	"github.com/vippsas/sqlcode/sqlparser"
 )
 
 type Deployable struct {
