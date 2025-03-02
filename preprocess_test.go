@@ -1,9 +1,23 @@
 package sqlcode
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/vippsas/sqlcode/sqlparser"
 )
+
+func TestSchemaSuffixFromHash(t *testing.T) {
+	t.Run("returns a unique hash", func(t *testing.T) {
+		doc := sqlparser.Document{
+			Declares: []sqlparser.Declare{},
+		}
+
+		value := SchemaSuffixFromHash(doc)
+		require.Equal(t, value, SchemaSuffixFromHash(doc))
+	})
+}
 
 func TestLineNumberInInput(t *testing.T) {
 

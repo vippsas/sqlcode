@@ -21,6 +21,7 @@ alter role [sqlcode-deploy-role] add member [sqlcode-deploy-sandbox-user];
 -- seems fair...
 grant impersonate on user::[sqlcode-deploy-sandbox-user] to [sqlcode-deploy-role];
 
+
 go
 
 create schema sqlcode;
@@ -63,7 +64,7 @@ as begin
         declare @msg varchar(max)
         declare @sql nvarchar(max)
 
-        if @@trancount = 0 throw 55001, 'You should run sqlcode.CreateCodeSchema within a transaction', 1;
+        if @@trancount = 0 throw 55001, 'You should run sqlcode.DropCodeSchema within a transaction', 1;
 
         declare @schemaname nvarchar(max) = concat('code@', @schemasuffix)
         declare @schemaid int = (select schema_id from sys.schemas where name = @schemaname);
