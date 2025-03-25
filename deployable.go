@@ -278,7 +278,7 @@ func (s *SchemaObject) Suffix() string {
 	return strings.Split(s.Name, "@")[1]
 }
 
-// Return a list of sqlcode schemas have been uploaded to the database.
+// Return a list of sqlcode schemas that have been uploaded to the database.
 // This includes all current and unused schemas.
 func (d *Deployable) ListUploaded(ctx context.Context, dbc DB) []*SchemaObject {
 	objects := []*SchemaObject{}
