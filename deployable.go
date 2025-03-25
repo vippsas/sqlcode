@@ -4,12 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	mssql "github.com/denisenkom/go-mssqldb"
-	"github.com/pkg/errors"
-	"github.com/vippsas/sqlcode/sqlparser"
 	"io/fs"
 	"strconv"
 	"strings"
+	"time"
+
+	mssql "github.com/denisenkom/go-mssqldb"
+	"github.com/pkg/errors"
+	"github.com/vippsas/sqlcode/sqlparser"
 )
 
 type Deployable struct {
@@ -137,6 +139,8 @@ func (d *Deployable) EnsureUploaded(ctx context.Context, dbc DB) error {
 
 	lockResourceName := "sqlcode.EnsureUploaded/" + d.SchemaSuffix
 
+	// When a lock is opened with the Transaction lock owner,
+	// that lock is released when the transaction is committed or rolled back.
 	var lockRetCode int
 	err := dbc.QueryRowContext(ctx, `
 declare @retcode int;
@@ -260,4 +264,52 @@ func MustInclude(opts Options, fsys ...fs.FS) Deployable {
 		panic(err)
 	}
 	return result
+}
+
+type SchemaObject struct {
+	Name       string
+	SchemaId   int
+	Objects    int
+	CreateDate time.Time
+	ModifyDate time.Time
+}
+
+func (s *SchemaObject) Suffix() string {
+	return strings.Split(s.Name, "@")[1]
+}
+
+// Return a list of sqlcode schemas that have been uploaded to the database.
+// This includes all current and unused schemas.
+func (d *Deployable) ListUploaded(ctx context.Context, dbc DB) []*SchemaObject {
+	objects := []*SchemaObject{}
+	impersonate(ctx, dbc, "sqlcode-deploy-sandbox-user", func(conn *sql.Conn) error {
+		rows, err := conn.QueryContext(ctx, `
+		select 
+			s.name
+			, s.schema_id
+			, o.objects
+			, o.create_date
+			, o.modify_date 
+		from sys.schemas s
+		outer apply (
+			select count(o.object_id) as objects
+				, min(o.create_date) as create_date
+				, max(o.modify_date) as modify_date
+			from sys.objects o
+			where o.schema_id = s.schema_id
+		) as o
+		where s.name like 'code@%'`)
+		if err != nil {
+			return err
+		}
+
+		for rows.Next() {
+			zero := &SchemaObject{}
+			rows.Scan(&zero.Name, &zero.Objects, &zero.SchemaId, &zero.CreateDate, &zero.ModifyDate)
+			objects = append(objects, zero)
+		}
+
+		return nil
+	})
+	return objects
 }
