@@ -13,7 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SQLSERVER_DSN: "sqlserver://127.0.0.1:1433?database=master&user id=sa&password=VippsPw1"
-      GODEBUG: 'x509negativeserial=1'
     steps:
       - uses: actions/checkout@v4
 
