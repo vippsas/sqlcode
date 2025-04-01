@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	mssql "github.com/denisenkom/go-mssqldb"
-	"github.com/denisenkom/go-mssqldb/msdsn"
 	"github.com/gofrs/uuid"
+	mssql "github.com/microsoft/go-mssqldb"
+	"github.com/microsoft/go-mssqldb/msdsn"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -68,7 +68,7 @@ func NewFixture() *Fixture {
 		panic(err)
 	}
 
-	pdsn, _, err := msdsn.Parse(dsn)
+	pdsn, err := msdsn.Parse(dsn)
 	if err != nil {
 		panic(err)
 	}
