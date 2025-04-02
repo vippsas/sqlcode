@@ -1,6 +1,7 @@
 module github.com/vippsas/sqlcode
 
 go 1.23.7
+toolchain go1.24.1
 
 require (
 	github.com/alecthomas/repr v0.4.0
@@ -11,7 +12,7 @@ require (
 	github.com/smasher164/xid v0.1.2
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
-	golang.org/x/net v0.37.0
+	golang.org/x/net v0.38.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
