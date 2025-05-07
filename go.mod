@@ -1,6 +1,6 @@
 module github.com/vippsas/sqlcode
 
-go 1.23.7
+go 1.24.3
 
 require (
 	github.com/alecthomas/repr v0.4.0
