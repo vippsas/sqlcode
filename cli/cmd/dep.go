@@ -1,10 +1,10 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/vippsas/sqlcode"
 )
@@ -27,7 +27,7 @@ var (
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 0 {
 				_ = cmd.Help()
-				return errors.New("Too many arguments")
+				return errors.New("too many arguments")
 			}
 			d, err := dep(true)
 			if err != nil {

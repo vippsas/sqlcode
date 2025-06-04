@@ -3,8 +3,8 @@ package sqlcode
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
-	"github.com/pkg/errors"
 	"github.com/vippsas/sqlcode/sqlparser"
 	"regexp"
 	"strings"

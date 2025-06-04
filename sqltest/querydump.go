@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/alecthomas/repr"
-	"github.com/pkg/errors"
 )
 
 type MapRow map[string]interface{}
@@ -24,7 +23,7 @@ func runQuery(dbi interface{}, qry string, args ...interface{}) *sql.Rows {
 	case CtxQuerier:
 		rows, err := q.QueryContext(context.Background(), qry, args...)
 		if err != nil {
-			panic(errors.WithStack(err))
+		    panic(fmt.Sprintf("runQuery, query: %s \n\n arguments:%+v \n\n  error: %s", qry, args, err))
 		}
 		return rows
 	default:
@@ -38,11 +37,11 @@ func RowIteratorToSlice(rows *sql.Rows) (columns []string, result Rows) {
 
 	columns, err := rows.Columns()
 	if err != nil {
-		panic(errors.WithStack(err))
+		panic(fmt.Sprintf("RowIteratorToSlice: while getting columns: %s", err))
 	}
 	types, err := rows.ColumnTypes()
 	if err != nil || len(types) != len(columns) {
-		panic(errors.WithStack(err))
+		panic(fmt.Sprintf("RowIteratorToSlice: while getting columns types: %s", err))
 	}
 	n := len(columns)
 	rowValues := make([]interface{}, n, n)
@@ -53,7 +52,7 @@ func RowIteratorToSlice(rows *sql.Rows) (columns []string, result Rows) {
 	for rows.Next() {
 		err = rows.Scan(pointers...)
 		if err != nil {
-			panic(errors.WithStack(err))
+		    panic(fmt.Sprintf("RowIteratorToSlice: while scanning: %s", err))
 		}
 
 		var row Row
@@ -130,21 +129,21 @@ func Query(dbi CtxQuerier, qry string, args ...interface{}) Rows {
 
 func QueryInt(dbi CtxQuerier, qry string, args ...interface{}) (result int) {
 	if err := dbi.QueryRowContext(context.Background(), qry, args...).Scan(&result); err != nil {
-		panic(errors.WithStack(err))
+		panic(fmt.Sprintf("QueryInt, query: %s\n\n arguments:%+v\n\n  error: %s", qry, args, err))
 	}
 	return
 }
 
 func QueryString(dbi CtxQuerier, qry string, args ...interface{}) (result string) {
 	if err := dbi.QueryRowContext(context.Background(), qry, args...).Scan(&result); err != nil {
-		panic(errors.WithStack(err))
+		panic(fmt.Sprintf("QueryString, query: %s\n\n arguments:%+v\n\n  error: %s", qry, args, err))
 	}
 	return
 }
 
 func QueryTime(dbi CtxQuerier, qry string, args ...interface{}) (result time.Time) {
 	if err := dbi.QueryRowContext(context.Background(), qry, args...).Scan(&result); err != nil {
-		panic(errors.WithStack(err))
+		panic(fmt.Sprintf("QueryTime, query: %s\n\n arguments:%+v\n\n  error: %s", qry, args, err))
 	}
 	return
 }

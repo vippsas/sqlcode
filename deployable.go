@@ -3,6 +3,7 @@ package sqlcode
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io/fs"
 	"strconv"
@@ -10,7 +11,6 @@ import (
 	"time"
 
 	mssql "github.com/denisenkom/go-mssqldb"
-	"github.com/pkg/errors"
 	"github.com/vippsas/sqlcode/sqlparser"
 )
 
@@ -220,7 +220,7 @@ func (d Deployable) IntConst(s string) (int, error) {
 			return strconv.Atoi(declare.Literal.RawValue)
 		}
 	}
-	return 0, errors.New("No `declare `" + s + "` found")
+	return 0, fmt.Errorf("no `declare %s found`", s)
 }
 
 func (d Deployable) MustIntConst(s string) int {
