@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	mssql "github.com/denisenkom/go-mssqldb"
 	"github.com/denisenkom/go-mssqldb/azuread"
@@ -14,7 +15,6 @@ import (
 
 	_ "github.com/denisenkom/go-mssqldb/azuread"
 	"github.com/denisenkom/go-mssqldb/msdsn"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
@@ -48,7 +48,7 @@ func OpenSocks5Sql(dsn string) (*sql.DB, error) {
 	if socksProxyAddress != "" {
 		dialer, err := proxy.SOCKS5("tcp", socksProxyAddress, nil, nil)
 		if err != nil {
-			return nil, errors.Wrap(err, fmt.Sprintf("Could not connect with SOCKS5 to %s", socksProxyAddress))
+			return nil, fmt.Errorf("could not connect with SOCKS5 to %s because of: %w", socksProxyAddress, err)
 		}
 		connector.Dialer = dialer.(proxy.ContextDialer)
 	}
@@ -70,7 +70,7 @@ func LoadConfig() (Config, error) {
 
 	configFilename := path.Join(directory, "sqlcode.yaml")
 	if _, err := os.Stat(configFilename); os.IsNotExist(err) {
-		return Config{}, errors.New("No sqlcode.yaml found in current directory")
+		return Config{}, errors.New("no sqlcode.yaml found in current directory")
 	}
 
 	yamlFile, err := ioutil.ReadFile(configFilename)
