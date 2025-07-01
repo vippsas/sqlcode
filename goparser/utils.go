@@ -15,8 +15,8 @@ type EmbeddedFsInfo struct {
 	Object  types.Object
 }
 
-// type Finder func([]*packages.Package) [][]EmbeddedFsInfo
-type Finder func([]*packages.Package) map[ast.Node][]EmbeddedFsInfo
+// type FinderFunc func([]*packages.Package) [][]EmbeddedFsInfo
+type FinderFunc func([]*packages.Package) map[ast.Node][]EmbeddedFsInfo
 
 func GetEmbbededFiles(pkgPath string) ([]string, error) {
 	cfg := &packages.Config{

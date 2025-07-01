@@ -4,11 +4,17 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
+	"io/fs"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"github.com/vippsas/sqlcode"
 	"github.com/vippsas/sqlcode/goparser"
+	"golang.org/x/tools/go/packages"
 )
+
+// TODO: Handle include tags
 
 var (
 	sqlFsCmd = &cobra.Command{
@@ -29,24 +35,37 @@ var (
 				dir = args[1]
 			}
 
-			//finder := goparser.NewInspector().FindDeployablesAndFileSystems
-			finder := goparser.NewWalker().FindDeployablesAndFileSystems
+			deployables := func(
+				dir string,
+				finder func([]*packages.Package) map[ast.Node][]goparser.EmbeddedFsInfo,
+			) map[ast.Node][]goparser.EmbeddedFsInfo {
+				pkgs, err := goparser.GetPackages(dir)
+				if err != nil {
+					fmt.Printf("Error loading package: %v\n", err)
+					return nil
+				}
+				return finder(pkgs)
+			}(dir, goparser.NewWalker().FindDeployablesAndFileSystems)
 
-			deployables := findDeployablesAndFileSystems(dir, finder)
-			println("dump")
 			for deployable, fss := range deployables {
+				embeddedFiles := mapFS{}
+
 				fmt.Printf("deployable %d %v\n", deployable)
 				for j, fs := range fss {
 					fmt.Printf("fileSystem %d\n", j)
 					fmt.Printf("%s\n", fs.Package)
 					fmt.Printf("%s\n", fs.Object)
-					embeddedFiles, err := goparser.GetEmbbededFiles(fs.Object.Pkg().Path())
+					efs, err := goparser.GetEmbbededFiles(fs.Object.Pkg().Path())
 					if err != nil {
 						continue
 					}
-					fmt.Printf("%v\n", embeddedFiles)
+					fmt.Printf("%v\n", efs)
 					fmt.Printf("\n")
+					for _, ef := range efs {
+						embeddedFiles.Add(ef)
+					}
 				}
+				VerifyEmbeddedFiles(embeddedFiles)
 			}
 
 			return nil
@@ -54,15 +73,56 @@ var (
 	}
 )
 
-func findDeployablesAndFileSystems(dir string, finder goparser.Finder) map[ast.Node][]goparser.EmbeddedFsInfo {
-	pkgs, err := goparser.GetPackages(dir)
-	if err != nil {
-		fmt.Printf("Error loading package: %v\n", err)
-		return nil
-	}
+type mapFS map[string]string
 
-	info := finder(pkgs)
-	return info
+var _ fs.FS = (*mapFS)(nil)
+
+func (m mapFS) Open(filename string) (fs.File, error) {
+	if _, ok := m[filename]; !ok {
+		return nil, fs.ErrNotExist
+	}
+	return os.Open(m[filename])
+}
+
+func (m mapFS) Add(path string) {
+	filename := filepath.Base(path)
+	m[filename] = path
+}
+
+func VerifyEmbeddedFiles(files fs.FS) {
+	// TODO(dsf): tags
+	d, err := sqlcode.Include(
+		sqlcode.Options{
+			IncludeTags:         tags,
+			PartialParseResults: true,
+		},
+		files,
+	)
+	if err != nil {
+		fmt.Println("Error during parsing: " + err.Error())
+		fmt.Println("Treat results below with caution.")
+		fmt.Println()
+		err = nil
+	}
+	if len(d.CodeBase.Creates) == 0 && len(d.CodeBase.Declares) == 0 {
+		fmt.Println("No SQL code found in given paths")
+	}
+	if len(d.CodeBase.Errors) > 0 {
+		fmt.Println("Errors:")
+		for _, e := range d.CodeBase.Errors {
+			fmt.Printf("%s:%d:%d: %s\n", e.Pos.File, e.Pos.Line, e.Pos.Line, e.Message)
+		}
+	}
+	for _, c := range d.CodeBase.Creates {
+		fmt.Println(c.QuotedName.String() + ":")
+		if len(c.DependsOn) > 0 {
+			fmt.Println("  Uses:")
+			for _, u := range c.DependsOn {
+				fmt.Println("    " + u.String())
+			}
+		}
+		fmt.Println()
+	}
 }
 
 func init() {
