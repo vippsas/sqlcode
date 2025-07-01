@@ -6,11 +6,11 @@ import (
 	"go/ast"
 	"io/fs"
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/vippsas/sqlcode"
-	"github.com/vippsas/sqlcode/goparser"
+	"github.com/vippsas/sqlcode/go/mapfs"
+	"github.com/vippsas/sqlcode/go/parser"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -37,25 +37,25 @@ var (
 
 			deployables := func(
 				dir string,
-				finder func([]*packages.Package) map[ast.Node][]goparser.EmbeddedFsInfo,
-			) map[ast.Node][]goparser.EmbeddedFsInfo {
-				pkgs, err := goparser.GetPackages(dir)
+				finder func([]*packages.Package) map[ast.Node][]parser.EmbeddedFsInfo,
+			) map[ast.Node][]parser.EmbeddedFsInfo {
+				pkgs, err := parser.GetPackages(dir)
 				if err != nil {
 					fmt.Printf("Error loading package: %v\n", err)
 					return nil
 				}
 				return finder(pkgs)
-			}(dir, goparser.NewWalker().FindDeployablesAndFileSystems)
+			}(dir, parser.NewWalker().FindDeployablesAndFileSystems)
 
 			for deployable, fss := range deployables {
-				embeddedFiles := mapFS{}
+				embeddedFiles := mapfs.MapFS{}
 
 				fmt.Printf("deployable %d %v\n", deployable)
 				for j, fs := range fss {
 					fmt.Printf("fileSystem %d\n", j)
 					fmt.Printf("%s\n", fs.Package)
 					fmt.Printf("%s\n", fs.Object)
-					efs, err := goparser.GetEmbbededFiles(fs.Object.Pkg().Path())
+					efs, err := parser.GetEmbbededFiles(fs.Object.Pkg().Path())
 					if err != nil {
 						continue
 					}
@@ -72,22 +72,6 @@ var (
 		},
 	}
 )
-
-type mapFS map[string]string
-
-var _ fs.FS = (*mapFS)(nil)
-
-func (m mapFS) Open(filename string) (fs.File, error) {
-	if _, ok := m[filename]; !ok {
-		return nil, fs.ErrNotExist
-	}
-	return os.Open(m[filename])
-}
-
-func (m mapFS) Add(path string) {
-	filename := filepath.Base(path)
-	m[filename] = path
-}
 
 func VerifyEmbeddedFiles(files fs.FS) {
 	// TODO(dsf): tags
