@@ -1,0 +1,27 @@
+services:
+  postgres:
+    image: postgres
+    networks:
+      - postgres
+    environment:
+      POSTGRES_PASSWORD: VippsPw1
+      POSTGRES_USER: sa
+      POSTGRES_DB: master
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready", "-d", "db_prod"]
+      interval: 1s
+      retries: 20
+  test:
+    build:
+      dockerfile: dockerfile.test
+    networks:
+      - postgres
+    environment:
+      SQLSERVER_DSN: postgresql://sa:VippsPw1@postgres:5432/master?sslmode=disable
+      SQLSERVER_DRIVER: postgres
+      GODEBUG: "x509negativeserial=1"
+    depends_on:
+      postgres:
+        condition: service_healthy
+networks:
+  postgres:
