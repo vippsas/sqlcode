@@ -3,14 +3,17 @@ package sqltest
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
-	mssql "github.com/denisenkom/go-mssqldb"
-	"github.com/denisenkom/go-mssqldb/msdsn"
-	"github.com/gofrs/uuid"
 	"io/ioutil"
 	"os"
 	"strings"
 	"time"
+
+	mssql "github.com/denisenkom/go-mssqldb"
+	"github.com/denisenkom/go-mssqldb/msdsn"
+	"github.com/gofrs/uuid"
+	pgsql "github.com/lib/pq"
 )
 
 type StdoutLogger struct {
@@ -30,6 +33,20 @@ type Fixture struct {
 	DB      *sql.DB
 	DBName  string
 	adminDB *sql.DB
+	Driver  driver.Driver
+}
+
+func (f *Fixture) Quote(value string) string {
+	var ms mssql.Driver
+	var pg pgsql.Driver
+
+	if f.Driver == &ms {
+		return fmt.Sprintf("[%s]", value)
+	}
+	if f.Driver == &pg {
+		return fmt.Sprintf(`"%s"`, value)
+	}
+	return value
 }
 
 func NewFixture() *Fixture {
@@ -39,44 +56,70 @@ func NewFixture() *Fixture {
 	defer cancel()
 
 	dsn := os.Getenv("SQLSERVER_DSN")
-	if dsn == "" {
+	if len(dsn) == 0 {
 		panic("Must set SQLSERVER_DSN to run tests")
 	}
-	dsn = dsn + "&log=3"
 
-	mssql.SetLogger(StdoutLogger{})
+	driver := os.Getenv("SQLSERVER_DRIVER")
+	if len(driver) == 0 {
+		panic("Must set SQLSERVER_DRIVER to run tests")
+	}
+
+	switch driver {
+	case "sqlserver":
+		// set the logging level
+		dsn = dsn + "&log=3"
+		mssql.SetLogger(StdoutLogger{})
+	case "postgres":
+		break
+	}
 
 	var err error
 
-	fixture.adminDB, err = sql.Open("sqlserver", dsn)
+	fixture.adminDB, err = sql.Open(driver, dsn)
 	if err != nil {
 		panic(err)
 	}
+	// store a reference to the type of sql driver
+	fixture.Driver = fixture.adminDB.Driver()
+
 	fixture.DBName = strings.ReplaceAll(uuid.Must(uuid.NewV4()).String(), "-", "")
-
-	_, err = fixture.adminDB.ExecContext(ctx, fmt.Sprintf(`create database [%s]`, fixture.DBName))
+	dbname := fixture.Quote(fixture.DBName)
+	_, err = fixture.adminDB.ExecContext(ctx, fmt.Sprintf(`create database %s`, dbname))
 	if err != nil {
-		panic(err)
-	}
-	// These settings are just to get "worst-case" for our tests, since snapshot could interfer
-	_, err = fixture.adminDB.ExecContext(ctx, fmt.Sprintf(`alter database [%s] set allow_snapshot_isolation on`, fixture.DBName))
-	if err != nil {
-		panic(err)
-	}
-	_, err = fixture.adminDB.ExecContext(ctx, fmt.Sprintf(`alter database [%s] set read_committed_snapshot on`, fixture.DBName))
-	if err != nil {
+		fmt.Printf("Failed to create the database: %s for the %s driver\n", dbname, driver)
 		panic(err)
 	}
 
-	pdsn, _, err := msdsn.Parse(dsn)
-	if err != nil {
-		panic(err)
-	}
-	pdsn.Database = fixture.DBName
+	if driver == "sqlserver" {
+		// These settings are just to get "worst-case" for our tests, since snapshot could interfer
+		_, err = fixture.adminDB.ExecContext(ctx, fmt.Sprintf(`alter database %s set allow_snapshot_isolation on`, dbname))
+		if err != nil {
+			panic(err)
+		}
+		_, err = fixture.adminDB.ExecContext(ctx, fmt.Sprintf(`alter database %s set read_committed_snapshot on`, dbname))
+		if err != nil {
+			panic(err)
+		}
 
-	fixture.DB, err = sql.Open("sqlserver", pdsn.URL().String())
-	if err != nil {
-		panic(err)
+		pdsn, _, err := msdsn.Parse(dsn)
+		if err != nil {
+			panic(err)
+		}
+		pdsn.Database = fixture.DBName
+
+		fixture.DB, err = sql.Open(driver, pdsn.URL().String())
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if driver == "postgres" {
+		// TODO
+		fixture.DB, err = sql.Open(driver, strings.ReplaceAll(dsn, "/master", "/"+fixture.DBName))
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	return &fixture

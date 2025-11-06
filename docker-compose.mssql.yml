@@ -17,6 +17,7 @@ services:
       - mssql
     environment:
       SQLSERVER_DSN: sqlserver://mssql:1433?database=master&user id=sa&password=VippsPw1
+      SQLSERVER_DRIVER: sqlserver
     depends_on:
       mssql:
         condition: service_healthy
