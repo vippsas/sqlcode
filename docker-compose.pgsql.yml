@@ -18,7 +18,6 @@ services:
       - postgres
     environment:
       SQLSERVER_DSN: postgresql://sa:VippsPw1@postgres:5432/master?sslmode=disable
-      SQLSERVER_DRIVER: postgres
       GODEBUG: "x509negativeserial=1"
     depends_on:
       postgres:
