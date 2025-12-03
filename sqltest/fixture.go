@@ -3,9 +3,7 @@ package sqltest
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -13,8 +11,21 @@ import (
 	mssql "github.com/denisenkom/go-mssqldb"
 	"github.com/denisenkom/go-mssqldb/msdsn"
 	"github.com/gofrs/uuid"
-	pgsql "github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
+
+type SqlDriverType int
+
+const (
+	SqlDriverDenisen SqlDriverType = iota
+	SqlDriverPgx
+)
+
+var sqlDrivers = map[SqlDriverType]string{
+	SqlDriverDenisen: "sqlserver",
+	SqlDriverPgx:     "pgx",
+}
 
 type StdoutLogger struct {
 }
@@ -33,17 +44,23 @@ type Fixture struct {
 	DB      *sql.DB
 	DBName  string
 	adminDB *sql.DB
-	Driver  driver.Driver
+	Driver  SqlDriverType
 }
 
-func (f *Fixture) Quote(value string) string {
-	var ms mssql.Driver
-	var pg pgsql.Driver
+func (f *Fixture) IsSqlServer() bool {
+	return f.Driver == SqlDriverDenisen
+}
 
-	if f.Driver == &ms {
+func (f *Fixture) IsPostgresql() bool {
+	return f.Driver == SqlDriverPgx
+}
+
+// SQL specific quoting syntax
+func (f *Fixture) Quote(value string) string {
+	if f.IsSqlServer() {
 		return fmt.Sprintf("[%s]", value)
 	}
-	if f.Driver == &pg {
+	if f.IsPostgresql() {
 		return fmt.Sprintf(`"%s"`, value)
 	}
 	return value
@@ -60,38 +77,39 @@ func NewFixture() *Fixture {
 		panic("Must set SQLSERVER_DSN to run tests")
 	}
 
-	driver := os.Getenv("SQLSERVER_DRIVER")
-	if len(driver) == 0 {
-		panic("Must set SQLSERVER_DRIVER to run tests")
-	}
-
-	switch driver {
-	case "sqlserver":
+	if strings.Contains(dsn, "sqlserver") {
 		// set the logging level
-		dsn = dsn + "&log=3"
+		// To enable specific logging levels, you sum the values of the desired flags
+		// 1: Log errors
+		// 2: Log messages
+		// 4: Log rows affected
+		// 8: Trace SQL statements
+		// 16: Log statement parameters
+		// 32: Log transaction begin/end
+		dsn = dsn + "&log=63"
 		mssql.SetLogger(StdoutLogger{})
-	case "postgres":
-		break
+		fixture.Driver = SqlDriverDenisen
+	}
+	if strings.Contains(dsn, "postgresql") {
+		fixture.Driver = SqlDriverPgx
 	}
 
 	var err error
-
-	fixture.adminDB, err = sql.Open(driver, dsn)
+	fixture.adminDB, err = sql.Open(sqlDrivers[fixture.Driver], dsn)
 	if err != nil {
 		panic(err)
 	}
-	// store a reference to the type of sql driver
-	fixture.Driver = fixture.adminDB.Driver()
 
 	fixture.DBName = strings.ReplaceAll(uuid.Must(uuid.NewV4()).String(), "-", "")
 	dbname := fixture.Quote(fixture.DBName)
-	_, err = fixture.adminDB.ExecContext(ctx, fmt.Sprintf(`create database %s`, dbname))
+	qs := fmt.Sprintf(`create database %s`, dbname)
+	_, err = fixture.adminDB.ExecContext(ctx, qs)
 	if err != nil {
-		fmt.Printf("Failed to create the database: %s for the %s driver\n", dbname, driver)
+		fmt.Printf("Failed to create the (%s) database: %s\n", sqlDrivers[fixture.Driver], dbname)
 		panic(err)
 	}
 
-	if driver == "sqlserver" {
+	if fixture.IsSqlServer() {
 		// These settings are just to get "worst-case" for our tests, since snapshot could interfer
 		_, err = fixture.adminDB.ExecContext(ctx, fmt.Sprintf(`alter database %s set allow_snapshot_isolation on`, dbname))
 		if err != nil {
@@ -108,15 +126,15 @@ func NewFixture() *Fixture {
 		}
 		pdsn.Database = fixture.DBName
 
-		fixture.DB, err = sql.Open(driver, pdsn.URL().String())
+		fixture.DB, err = sql.Open(sqlDrivers[fixture.Driver], pdsn.URL().String())
 		if err != nil {
 			panic(err)
 		}
 	}
 
-	if driver == "postgres" {
+	if fixture.IsPostgresql() {
 		// TODO
-		fixture.DB, err = sql.Open(driver, strings.ReplaceAll(dsn, "/master", "/"+fixture.DBName))
+		fixture.DB, err = sql.Open(sqlDrivers[fixture.Driver], strings.ReplaceAll(dsn, "/master", "/"+fixture.DBName))
 		if err != nil {
 			panic(err)
 		}
@@ -140,23 +158,8 @@ func (f *Fixture) Teardown() {
 	f.adminDB = nil
 }
 
-func (f *Fixture) RunMigrations() {
-	migrationSql, err := ioutil.ReadFile("migrations/from0001/0001.changefeed.sql")
-	if err != nil {
-		panic(err)
-	}
-	parts := strings.Split(string(migrationSql), "\ngo\n")
-	for _, p := range parts {
-		_, err = f.DB.Exec(p)
-		if err != nil {
-			fmt.Println(p)
-			panic(err)
-		}
-	}
-}
-
 func (f *Fixture) RunMigrationFile(filename string) {
-	migrationSql, err := ioutil.ReadFile(filename)
+	migrationSql, err := os.ReadFile(filename)
 	if err != nil {
 		panic(err)
 	}

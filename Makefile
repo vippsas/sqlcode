@@ -1,4 +1,7 @@
-test:
+test: test_mssql test_pgsql
+
+
+test_mssql:
 	docker compose --progress plain -f docker-compose.mssql.yml run test
 
 test_pgsql:

@@ -158,6 +158,7 @@ select @retcode;
 	}
 
 	defer func() {
+		// TODO: This returns an error if the lock is already released
 		_, _ = dbc.ExecContext(ctx, `sp_releaseapplock`,
 			sql.Named("Resource", lockResourceName),
 			sql.Named("LockOwner", "Session"),
