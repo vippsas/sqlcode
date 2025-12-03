@@ -92,6 +92,8 @@ func NewFixture() *Fixture {
 	}
 	if strings.Contains(dsn, "postgresql") {
 		fixture.Driver = SqlDriverPgx
+		// https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-CLIENT-MIN-MESSAGES
+		dsn = dsn + "&options=-c%20client_min_messages%3DDEBUG5"
 	}
 
 	var err error
@@ -105,7 +107,7 @@ func NewFixture() *Fixture {
 	qs := fmt.Sprintf(`create database %s`, dbname)
 	_, err = fixture.adminDB.ExecContext(ctx, qs)
 	if err != nil {
-		fmt.Printf("Failed to create the (%s) database: %s\n", sqlDrivers[fixture.Driver], dbname)
+		fmt.Printf("Failed to create the (%s) database: %s: %e\n", sqlDrivers[fixture.Driver], dbname, err)
 		panic(err)
 	}
 
@@ -133,7 +135,7 @@ func NewFixture() *Fixture {
 	}
 
 	if fixture.IsPostgresql() {
-		// TODO
+		// TODO use pgx config parser
 		fixture.DB, err = sql.Open(sqlDrivers[fixture.Driver], strings.ReplaceAll(dsn, "/master", "/"+fixture.DBName))
 		if err != nil {
 			panic(err)
@@ -153,7 +155,10 @@ func (f *Fixture) Teardown() {
 
 	_ = f.DB.Close()
 	f.DB = nil
-	_, _ = f.adminDB.ExecContext(ctx, fmt.Sprintf(`drop database [%s]`, f.DBName))
+	_, err := f.adminDB.ExecContext(ctx, fmt.Sprintf(`drop database %s`, f.Quote(f.DBName)))
+	if err != nil {
+		fmt.Printf("Failed to drop (%s) database %s: %e", sqlDrivers[f.Driver], f.DBName, err)
+	}
 	_ = f.adminDB.Close()
 	f.adminDB = nil
 }
