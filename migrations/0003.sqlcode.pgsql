@@ -156,6 +156,52 @@ exception
 end;
 $$;
 
+-- similar behaviour as mssql getapplock
+-- PostgreSQL advisory locks are session-based by default
+create or replace function sqlcode.get_applock(
+    resource text,
+    timeout_ms integer default 0
+)
+returns integer
+language plpgsql
+as $$
+declare
+    resource_key bigint;
+    acquired     boolean;
+    waited_ms    integer := 0;
+begin
+    -- convert string to advisory-lock key
+    select hashtext(resource) into resource_key;
+
+    -- attempt lock with timeout loop
+    loop
+        select pg_try_advisory_lock_shared(resource_key)
+        into acquired;
+
+        if acquired then
+            return 1;  -- lock acquired (success)
+        end if;
+
+        if waited_ms >= timeout_ms then
+            return 0;  -- timeout
+        end if;
+
+        perform pg_sleep(0.01);    -- sleep 10 ms
+        waited_ms := waited_ms + 10;
+    end loop;
+
+    return null;  -- safety fallback (should never hit)
+end;
+$$;
+
+create or replace function sqlcode.release_applock(resource text)
+returns boolean
+language sql
+as $$
+    select pg_advisory_unlock_shared(hashtext(resource));
+$$;
+
+
 -- ensure procedures are owned by the definer role
 alter procedure sqlcode.createcodeschema(varchar)
     owner to "sqlcode-definer-role";
