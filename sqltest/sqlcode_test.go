@@ -11,6 +11,7 @@ import (
 func Test_RowsAffected(t *testing.T) {
 	fixture := NewFixture()
 	defer fixture.Teardown()
+	// if sql else pgsql
 	fixture.RunMigrationFile("../migrations/0001.sqlcode.sql")
 
 	ctx := context.Background()
@@ -28,4 +29,27 @@ func Test_RowsAffected(t *testing.T) {
 	require.Len(t, schemas, 1)
 	require.Equal(t, 6, schemas[0].Objects)
 	require.Equal(t, "5420c0269aaf", schemas[0].Suffix())
+}
+
+func Test_EnsureUploaded(t *testing.T) {
+	fixture := NewFixture()
+	defer fixture.Teardown()
+
+	t.Run("mssql", func(t *testing.T) {
+		if !fixture.IsSqlServer() {
+			t.Skip()
+		}
+		fixture.RunMigrationFile("../migrations/0001.sqlcode.sql")
+
+		ctx := context.Background()
+		require.NoError(t, SQL.EnsureUploaded(ctx, fixture.DB))
+	})
+
+	t.Run("pgsql", func(t *testing.T) {
+		if !fixture.IsPostgresql() {
+			t.Skip()
+		}
+
+		fixture.RunMigrationFile("../migrations/0001.sqlcode.sql")
+	})
 }
