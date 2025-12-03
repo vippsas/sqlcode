@@ -11,6 +11,9 @@ import (
 	"time"
 
 	mssql "github.com/denisenkom/go-mssqldb"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
+	pgxstdlib "github.com/jackc/pgx/v5/stdlib"
 	"github.com/vippsas/sqlcode/sqlparser"
 )
 
@@ -77,21 +80,22 @@ func impersonate(ctx context.Context, dbc DB, username string, f func(conn *sql.
 // Upload will create and upload the schema; resulting in an error
 // if the schema already exists
 func (d *Deployable) Upload(ctx context.Context, dbc DB) error {
-	// First, impersonate a user with minimal privileges to get at least
-	// some level of sandboxing so that migration scripts can't do anything
-	// the caller didn't expect them to.
-	return impersonate(ctx, dbc, "sqlcode-deploy-sandbox-user", func(conn *sql.Conn) error {
+	driver := dbc.Driver()
+	qs := make(map[string][]interface{}, 1)
+
+	var uploadFunc = func(conn *sql.Conn) error {
 		tx, err := conn.BeginTx(ctx, nil)
 		if err != nil {
 			return err
 		}
 
-		_, err = tx.ExecContext(ctx, `sqlcode.CreateCodeSchema`,
-			sql.Named("schemasuffix", d.SchemaSuffix),
-		)
-		if err != nil {
-			_ = tx.Rollback()
-			return err
+		for q, args := range qs {
+			_, err = tx.ExecContext(ctx, q, args...)
+
+			if err != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("failed to execute (%s) with arg(%s) in schema %s: %w", q, args, d.SchemaSuffix, err)
+			}
 		}
 
 		preprocessed, err := Preprocess(d.CodeBase, d.SchemaSuffix)
@@ -123,8 +127,36 @@ func (d *Deployable) Upload(ctx context.Context, dbc DB) error {
 
 		return nil
 
-	})
+	}
 
+	if _, ok := driver.(*mssql.Driver); ok {
+		// First, impersonate a user with minimal privileges to get at least
+		// some level of sandboxing so that migration scripts can't do anything
+		// the caller didn't expect them to.
+		qs["sqlcode.CreateCodeSchema"] = []interface {
+		}{
+			sql.Named("schemasuffix", d.SchemaSuffix),
+		}
+
+		return impersonate(ctx, dbc, "sqlcode-deploy-sandbox-user", uploadFunc)
+	}
+
+	if _, ok := driver.(*stdlib.Driver); ok {
+		qs[`set role "sqlcode-deploy-sandbox-user"`] = nil
+		qs[`call sqlcode.createcodeschema(@schemasuffix)`] = []interface{}{
+			pgx.NamedArgs{"schemasuffix": d.SchemaSuffix},
+		}
+		conn, err := dbc.Conn(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			_ = conn.Close()
+		}()
+		return uploadFunc(conn)
+	}
+
+	return fmt.Errorf("failed to determine sql driver to upload schema: %s", d.SchemaSuffix)
 }
 
 // EnsureUploaded checks that the schema with the suffix already exists,
@@ -137,37 +169,51 @@ func (d *Deployable) EnsureUploaded(ctx context.Context, dbc DB) error {
 		return nil
 	}
 
+	driver := dbc.Driver()
 	lockResourceName := "sqlcode.EnsureUploaded/" + d.SchemaSuffix
+
+	var lockRetCode int
+	var lockQs string
+	var unlockQs string
+	var err error
 
 	// When a lock is opened with the Transaction lock owner,
 	// that lock is released when the transaction is committed or rolled back.
-	var lockRetCode int
-	err := dbc.QueryRowContext(ctx, `
-declare @retcode int;
-exec @retcode = sp_getapplock @Resource = @resource, @LockMode = 'Shared', @LockOwner = 'Session', @LockTimeout = @timeoutMs;
-select @retcode;
-`,
-		sql.Named("resource", lockResourceName),
-		sql.Named("timeoutMs", 20000),
-	).Scan(&lockRetCode)
+	if _, ok := driver.(*pgxstdlib.Driver); ok {
+		lockQs = `select sqlcode.get_applock(@resource, @timeout)`
+		unlockQs = `select sqlcode.release_applock(@resource)`
+
+		err = dbc.QueryRowContext(ctx, lockQs, pgx.NamedArgs{
+			"resource":  lockResourceName,
+			"timeoutMs": 20000,
+		}).Scan(&lockRetCode)
+
+		defer func() {
+			dbc.ExecContext(ctx, unlockQs, pgx.NamedArgs{"resource": lockResourceName})
+		}()
+	}
+
+	if _, ok := driver.(*mssql.Driver); ok {
+		// TODO
+
+		defer func() {
+			// TODO: This returns an error if the lock is already released
+			_, _ = dbc.ExecContext(ctx, unlockQs,
+				sql.Named("Resource", lockResourceName),
+				sql.Named("LockOwner", "Session"),
+			)
+		}()
+	}
+
 	if err != nil {
 		return err
 	}
 	if lockRetCode < 0 {
 		return errors.New("was not able to get lock before timeout")
 	}
-
-	defer func() {
-		// TODO: This returns an error if the lock is already released
-		_, _ = dbc.ExecContext(ctx, `sp_releaseapplock`,
-			sql.Named("Resource", lockResourceName),
-			sql.Named("LockOwner", "Session"),
-		)
-	}()
-
 	exists, err := Exists(ctx, dbc, d.SchemaSuffix)
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to determine if schema %s exists: %w", d.SchemaSuffix, err)
 	}
 
 	if exists {
