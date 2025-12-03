@@ -1,12 +1,9 @@
 -- ======================================================================
--- Create users and roles
+-- create users and roles
 -- ======================================================================
 do $$
 begin
-    -- This role will own the sqlcode schemas, so that created functions etc.
-    -- are owned by a role without permissions; this means functions/procedures
-    -- will not get more permissions than the caller already has (unless you use
-    -- SECURITY DEFINER somewhere).
+    -- role that will own the sqlcode schemas (actual code schemas), with no login
     if not exists (
         select 1
         from pg_roles
@@ -15,8 +12,16 @@ begin
         create role "sqlcode-user-with-no-permissions" nologin;
     end if;
 
-    -- This role will be granted execute (usage) permissions on all sqlcode schemas;
-    -- useful e.g. for humans logging in to debug.
+    -- role that owns the management schema/procedures (security definer)
+    if not exists (
+        select 1
+        from pg_roles
+        where rolname = 'sqlcode-definer-role'
+    ) then
+        create role "sqlcode-definer-role" nologin;
+    end if;
+
+    -- role that gets execute / usage on code schemas (for humans debugging etc.)
     if not exists (
         select 1
         from pg_roles
@@ -25,8 +30,8 @@ begin
         create role "sqlcode-execute-role";
     end if;
 
-    -- Role for calling CreateCodeSchema / DropCodeSchema; the role will also be granted
-    -- control over all schemas created this way.
+    -- role for calling createcodeschema / dropcodeschema;
+    -- this role does not own the procedures, it only calls them.
     if not exists (
         select 1
         from pg_roles
@@ -35,8 +40,7 @@ begin
         create role "sqlcode-deploy-role";
     end if;
 
-    -- Make a role that *only* has this deploy role. During deploys we SET ROLE to this
-    -- so that we can more safely deploy code with restricted permissions.
+    -- sandbox role used during deploys, which only has sqlcode-deploy-role
     if not exists (
         select 1
         from pg_roles
@@ -48,7 +52,7 @@ end;
 $$;
 
 -- ======================================================================
--- grant permissions
+-- grant permissions / role memberships
 -- ======================================================================
 
 do $$
@@ -64,27 +68,25 @@ begin
     ) then
         grant "sqlcode-deploy-role" to "sqlcode-deploy-sandbox-user";
     end if;
-
 end;
 $$;
 
 -- ======================================================================
--- create schema
+-- create schema for management code (owner = definer role)
 -- ======================================================================
 
--- Base schema to hold the procedures etc.
 do $$
 begin
     if not exists (
         select 1 from pg_namespace where nspname = 'sqlcode'
     ) then
-        create schema sqlcode;
+        create schema sqlcode authorization "sqlcode-definer-role";
     end if;
 end;
 $$;
 
 -- ======================================================================
--- create procedures
+-- create procedures (security definer)
 -- ======================================================================
 
 create or replace procedure sqlcode.createcodeschema(schemasuffix varchar)
@@ -94,6 +96,9 @@ as $$
 declare
     schemaname text := format('code@%s', schemasuffix);
 begin
+    -- harden search_path for security-definer (optional but recommended)
+    perform set_config('search_path', 'pg_catalog', true);
+
     -- create the schema owned by "sqlcode-user-with-no-permissions"
     execute format(
         'create schema %I authorization %I',
@@ -120,18 +125,17 @@ exception
 end;
 $$;
 
--- ======================================================================
--- procedure: sqlcode.dropcodeschema
--- ======================================================================
-
 create or replace procedure sqlcode.dropcodeschema(schemasuffix varchar)
 language plpgsql
 security definer
 as $$
 declare
-    schemaname text := format('code@%s', schemasuffix);
-    schema_exists boolean;
+    schemaname     text    := format('code@%s', schemasuffix);
+    schema_exists  boolean;
 begin
+    -- harden search_path for security-definer (optional but recommended)
+    perform set_config('search_path', 'pg_catalog', true);
+
     -- check schema existence
     select exists (
         select 1
@@ -152,15 +156,25 @@ exception
 end;
 $$;
 
+-- ensure procedures are owned by the definer role
+alter procedure sqlcode.createcodeschema(varchar)
+    owner to "sqlcode-definer-role";
+
+alter procedure sqlcode.dropcodeschema(varchar)
+    owner to "sqlcode-definer-role";
+
 -- ======================================================================
 -- privileges on the procedures and base schema
 -- ======================================================================
 
+-- allow deploy role to call the management procedures
 grant execute on procedure sqlcode.createcodeschema(varchar)
     to "sqlcode-deploy-role";
 
 grant execute on procedure sqlcode.dropcodeschema(varchar)
     to "sqlcode-deploy-role";
 
-grant usage, create on schema sqlcode
+-- usually deploy role does not need create in the sqlcode management schema
+-- (the procedures handle creation in separate "code@..." schemas)
+grant usage on schema sqlcode
     to "sqlcode-deploy-role";
