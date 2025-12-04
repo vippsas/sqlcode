@@ -3,6 +3,8 @@ package cmd
 import (
 	"errors"
 	"fmt"
+
+	mssql "github.com/denisenkom/go-mssqldb"
 	"github.com/spf13/cobra"
 	"github.com/vippsas/sqlcode"
 )
@@ -23,7 +25,7 @@ var (
 				return err
 			}
 
-			preprocessed, err := sqlcode.Preprocess(d.CodeBase, schemasuffix)
+			preprocessed, err := sqlcode.Preprocess(d.CodeBase, schemasuffix, &mssql.Driver{})
 			if err != nil {
 				return err
 			}

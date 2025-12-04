@@ -98,7 +98,8 @@ func (d *Deployable) Upload(ctx context.Context, dbc DB) error {
 			}
 		}
 
-		preprocessed, err := Preprocess(d.CodeBase, d.SchemaSuffix)
+		preprocessed, err := Preprocess(d.CodeBase, d.SchemaSuffix, dbc.Driver())
+
 		if err != nil {
 			_ = tx.Rollback()
 			return err
@@ -107,15 +108,16 @@ func (d *Deployable) Upload(ctx context.Context, dbc DB) error {
 			_, err := tx.ExecContext(ctx, b.Lines)
 			if err != nil {
 				_ = tx.Rollback()
-				sqlerr, ok := err.(mssql.Error)
-				if !ok {
-					return err
-				} else {
-					return SQLUserError{
+				if sqlerr, ok := err.(mssql.Error); ok {
+					return MSSQLUserError{
 						Wrapped: sqlerr,
 						Batch:   b,
 					}
 				}
+
+				// TODO(ks) PGSQLUserError
+				return fmt.Errorf("failed to upload deployable:%s in schema:%s:%w", d.CodeBase, d.SchemaSuffix, err)
+
 			}
 		}
 		err = tx.Commit()
@@ -327,10 +329,28 @@ func (s *SchemaObject) Suffix() string {
 
 // Return a list of sqlcode schemas that have been uploaded to the database.
 // This includes all current and unused schemas.
-func (d *Deployable) ListUploaded(ctx context.Context, dbc DB) []*SchemaObject {
+func (d *Deployable) ListUploaded(ctx context.Context, dbc DB) ([]*SchemaObject, error) {
 	objects := []*SchemaObject{}
-	impersonate(ctx, dbc, "sqlcode-deploy-sandbox-user", func(conn *sql.Conn) error {
-		rows, err := conn.QueryContext(ctx, `
+	driver := dbc.Driver()
+	var qs string
+
+	var list = func(conn *sql.Conn) error {
+		rows, err := conn.QueryContext(ctx, qs)
+		if err != nil {
+			return err
+		}
+
+		for rows.Next() {
+			zero := &SchemaObject{}
+			rows.Scan(&zero.Name, &zero.Objects, &zero.SchemaId, &zero.CreateDate, &zero.ModifyDate)
+			objects = append(objects, zero)
+		}
+
+		return nil
+	}
+
+	if _, ok := driver.(*mssql.Driver); ok {
+		qs = `
 		select 
 			s.name
 			, s.schema_id
@@ -345,18 +365,32 @@ func (d *Deployable) ListUploaded(ctx context.Context, dbc DB) []*SchemaObject {
 			from sys.objects o
 			where o.schema_id = s.schema_id
 		) as o
-		where s.name like 'code@%'`)
+		where s.name like 'code@%'`
+		impersonate(ctx, dbc, "sqlcode-deploy-sandbox-user", list)
+	}
+
+	// TODO(ks) the timestamps for schemas
+	if _, ok := driver.(*stdlib.Driver); ok {
+		qs = `select nspname as name
+			, oid as schema_id
+			, 0 as objects
+			, '' as create_date
+			, '' as modify_date
+			from pg_namespace
+			where nspname like 'code@%'
+			order by nspname`
+		conn, err := dbc.Conn(ctx)
 		if err != nil {
-			return err
+			return nil, err
 		}
-
-		for rows.Next() {
-			zero := &SchemaObject{}
-			rows.Scan(&zero.Name, &zero.Objects, &zero.SchemaId, &zero.CreateDate, &zero.ModifyDate)
-			objects = append(objects, zero)
+		err = list(conn)
+		if err != nil {
+			return nil, err
 		}
+		defer func() {
+			_ = conn.Close()
+		}()
+	}
 
-		return nil
-	})
-	return objects
+	return objects, nil
 }

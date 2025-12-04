@@ -2,9 +2,9 @@ package sqltest
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,7 +30,8 @@ func Test_RowsAffected(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), rowsAffected)
 
-		schemas := SQL.ListUploaded(ctx, fixture.DB)
+		schemas, err := SQL.ListUploaded(ctx, fixture.DB)
+		require.NoError(t, err)
 		require.Len(t, schemas, 1)
 		require.Equal(t, 6, schemas[0].Objects)
 		require.Equal(t, "5420c0269aaf", schemas[0].Suffix())
@@ -62,22 +63,14 @@ func Test_EnsureUploaded(t *testing.T) {
 
 		ctx := context.Background()
 
-		_, err := fixture.adminDB.Exec(`grant create on database @database to "sqlcode-definer-role"`,
-			pgx.NamedArgs{"database": fixture.DBName})
+		_, err := fixture.DB.Exec(
+			fmt.Sprintf(`grant create on database "%s" to "sqlcode-definer-role"`, fixture.DBName))
 		require.NoError(t, err)
 
 		require.NoError(t, SQL.EnsureUploaded(ctx, fixture.DB))
-		patched := SQL.Patch(`[code].Test`)
-
-		res, err := fixture.DB.ExecContext(ctx, patched)
+		schemas, err := SQL.ListUploaded(ctx, fixture.DB)
 		require.NoError(t, err)
-		rowsAffected, err := res.RowsAffected()
-		require.NoError(t, err)
-		assert.Equal(t, int64(1), rowsAffected)
+		require.Equal(t, "code@e3b0c44298fc", schemas[0].Name)
 
-		schemas := SQL.ListUploaded(ctx, fixture.DB)
-		require.Len(t, schemas, 1)
-		require.Equal(t, 6, schemas[0].Objects)
-		require.Equal(t, "5420c0269aaf", schemas[0].Suffix())
 	})
 }

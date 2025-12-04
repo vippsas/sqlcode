@@ -5,9 +5,26 @@ import (
 	"strings"
 	"testing"
 
+	mssql "github.com/denisenkom/go-mssqldb"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestPostgresqlCreate(t *testing.T) {
+	doc := ParseString("test.pgsql", `
+create procedure [code].test()
+language plpgsql
+as $$
+begin
+    perform 1;
+end;
+$$;
+	`)
+
+	require.Len(t, doc.Creates, 1)
+	require.Equal(t, &stdlib.Driver{}, doc.Creates[0].Driver)
+}
 
 func TestParserSmokeTest(t *testing.T) {
 	doc := ParseString("test.sql", `
@@ -43,6 +60,7 @@ end;
 
 	require.Equal(t, 1, len(doc.Creates))
 	c := doc.Creates[0]
+	require.Equal(t, &mssql.Driver{}, c.Driver)
 
 	assert.Equal(t, "[TestFunc]", c.QuotedName.Value)
 	assert.Equal(t, []string{"[HelloFunc]", "[OtherFunc]"}, c.DependsOnStrings())

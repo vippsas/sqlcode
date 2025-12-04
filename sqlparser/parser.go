@@ -12,6 +12,9 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	mssql "github.com/denisenkom/go-mssqldb"
+	"github.com/jackc/pgx/v5/stdlib"
 )
 
 var templateRoutineName string = "\ndeclare @RoutineName nvarchar(128)\nset @RoutineName = '%s'\n"
@@ -276,6 +279,14 @@ func (doc *Document) parseBatch(s *Scanner, isFirst bool) (hasMore bool) {
 			case "create":
 				// should be start of create procedure or create function...
 				c := doc.parseCreate(s, createCountInBatch)
+
+				if strings.HasSuffix(string(s.file), ".sql") {
+					c.Driver = &mssql.Driver{}
+				}
+				if strings.HasSuffix(string(s.file), ".pgsql") {
+					c.Driver = &stdlib.Driver{}
+				}
+
 				// *prepend* what we saw before getting to the 'create'
 				createCountInBatch++
 				c.Body = append(nodes, c.Body...)
@@ -580,7 +591,7 @@ func ParseFilesystems(fslst []fs.FS, includeTags []string) (filenames []string, 
 				if strings.HasPrefix(path, ".") || strings.Contains(path, "/.") {
 					return nil
 				}
-				if !strings.HasSuffix(path, ".sql") {
+				if !strings.HasSuffix(path, ".sql") || !strings.HasSuffix(path, ".pgsql") {
 					return nil
 				}
 
