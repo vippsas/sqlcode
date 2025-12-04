@@ -1,10 +1,12 @@
 package sqlparser
 
 import (
+	"database/sql/driver"
 	"fmt"
-	"gopkg.in/yaml.v3"
 	"io"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Unparsed struct {
@@ -64,7 +66,8 @@ type Create struct {
 	QuotedName PosString // proc/func/type name, including []
 	Body       []Unparsed
 	DependsOn  []PosString
-	Docstring  []PosString // comment lines before the create statement. Note: this is also part of Body
+	Docstring  []PosString   // comment lines before the create statement. Note: this is also part of Body
+	Driver     driver.Driver // the sql driver this document is intended for
 }
 
 func (c Create) DocstringAsString() string {

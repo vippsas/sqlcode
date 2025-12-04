@@ -101,7 +101,7 @@ begin
 
     -- create the schema owned by "sqlcode-user-with-no-permissions"
     execute format(
-        'create schema %I authorization %I',
+        'create schema if not exists %I authorization %I',
         schemaname,
         'sqlcode-user-with-no-permissions'
     );
@@ -219,6 +219,9 @@ grant execute on procedure sqlcode.createcodeschema(varchar)
 
 grant execute on procedure sqlcode.dropcodeschema(varchar)
     to "sqlcode-deploy-role";
+
+grant "sqlcode-user-with-no-permissions"
+    to "sqlcode-definer-role";
 
 -- usually deploy role does not need create in the sqlcode management schema
 -- (the procedures handle creation in separate "code@..." schemas)

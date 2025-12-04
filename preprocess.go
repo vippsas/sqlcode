@@ -2,12 +2,15 @@ package sqlcode
 
 import (
 	"crypto/sha256"
+	"database/sql/driver"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/vippsas/sqlcode/sqlparser"
 	"regexp"
 	"strings"
+
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/vippsas/sqlcode/sqlparser"
 )
 
 func SchemaSuffixFromHash(doc sqlparser.Document) string {
@@ -138,7 +141,7 @@ func sqlcodeTransformCreate(declares map[string]string, c sqlparser.Create, quot
 	return
 }
 
-func Preprocess(doc sqlparser.Document, schemasuffix string) (PreprocessedFile, error) {
+func Preprocess(doc sqlparser.Document, schemasuffix string, driver driver.Driver) (PreprocessedFile, error) {
 	var result PreprocessedFile
 
 	if strings.Contains(schemasuffix, "]") {
@@ -154,10 +157,21 @@ func Preprocess(doc sqlparser.Document, schemasuffix string) (PreprocessedFile, 
 		if len(create.Body) == 0 {
 			continue
 		}
-		batch, err := sqlcodeTransformCreate(declares, create, "[code@"+schemasuffix+"]")
-		if err != nil {
-			return result, err
+		if create.Driver != driver {
+			// continue
 		}
+		// TODO(ks) this is not reached
+		target := "[code@" + schemasuffix + "]"
+
+		if _, ok := create.Driver.(*stdlib.Driver); ok {
+			target = "code@" + schemasuffix
+		}
+
+		batch, err := sqlcodeTransformCreate(declares, create, target)
+		if err != nil {
+			return result, fmt.Errorf("failed to transform create: %w", err)
+		}
+		fmt.Print(batch)
 		result.Batches = append(result.Batches, batch)
 	}
 
