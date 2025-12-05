@@ -9,7 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -18,6 +20,8 @@ import (
 )
 
 var templateRoutineName string = "\ndeclare @RoutineName nvarchar(128)\nset @RoutineName = '%s'\n"
+
+var supportedSqlExtensions []string = []string{".sql", ".pgsql"}
 
 func CopyToken(s *Scanner, target *[]Unparsed) {
 	*target = append(*target, CreateUnparsed(s))
@@ -564,9 +568,8 @@ func ParseString(filename FileRef, input string) (result Document) {
 	return
 }
 
-// ParseFileystems iterates through a list of filesystems and parses all files
-// matching `*.sql`, determines which one are sqlcode files from the contents,
-// and returns the combination of all of them.
+// ParseFileystems iterates through a list of filesystems and parses all supported
+// SQL files and returns the combination of all of them.
 //
 // err will only return errors related to filesystems/reading. Errors
 // related to parsing/sorting will be in result.Errors.
@@ -591,7 +594,9 @@ func ParseFilesystems(fslst []fs.FS, includeTags []string) (filenames []string, 
 				if strings.HasPrefix(path, ".") || strings.Contains(path, "/.") {
 					return nil
 				}
-				if !strings.HasSuffix(path, ".sql") || !strings.HasSuffix(path, ".pgsql") {
+
+				extension := filepath.Ext(path)
+				if !slices.Contains(supportedSqlExtensions, extension) {
 					return nil
 				}
 
