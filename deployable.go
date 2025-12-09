@@ -99,7 +99,6 @@ func (d *Deployable) Upload(ctx context.Context, dbc DB) error {
 		}
 
 		preprocessed, err := Preprocess(d.CodeBase, d.SchemaSuffix, dbc.Driver())
-
 		if err != nil {
 			_ = tx.Rollback()
 			return err
@@ -244,9 +243,26 @@ func (d Deployable) DropAndUpload(ctx context.Context, dbc DB) error {
 }
 
 // Patch will preprocess the sql passed in so that it will call SQL code
-// deployed by the receiver Deployable
+// deployed by the receiver Deployable for SQL Server.
+// NOTE: This will be deprecated and eventually replaced with CodePatch.
 func (d Deployable) Patch(sql string) string {
 	return preprocessString(d.SchemaSuffix, sql)
+}
+
+// CodePatch will preprocess the sql passed in to call
+// the correct SQL code deployed to the provided database.
+// Q: Nameing? DBPatch, PatchV2, ???
+func (d Deployable) CodePatch(dbc *sql.DB, sql string) string {
+	driver := dbc.Driver()
+	if _, ok := driver.(*mssql.Driver); ok {
+		return codeSchemaRegexp.ReplaceAllString(sql, fmt.Sprintf(`[code@%s]`, d.SchemaSuffix))
+	}
+
+	if _, ok := driver.(*stdlib.Driver); ok {
+		return codeSchemaRegexp.ReplaceAllString(sql, fmt.Sprintf(`"code@%s"`, d.SchemaSuffix))
+	}
+
+	panic("unhandled sql driver")
 }
 
 func (d *Deployable) markAsUploaded(dbc DB) {
@@ -260,7 +276,6 @@ func (d *Deployable) IsUploadedFromCache(dbc DB) bool {
 
 // TODO: StringConst. This requires parsing a SQL literal, a bit too complex
 // to code up just-in-case
-
 func (d Deployable) IntConst(s string) (int, error) {
 	for _, declare := range d.CodeBase.Declares {
 		if declare.VariableName == s {

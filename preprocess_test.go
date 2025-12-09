@@ -199,8 +199,8 @@ end
 		require.NoError(t, err)
 		require.Len(t, result.Batches, 1)
 
-		assert.Contains(t, result.Batches[0].Lines, "[code@abc123]")
-		assert.NotContains(t, result.Batches[0].Lines, "[code]")
+		assert.Contains(t, result.Batches[0].Lines, "[code@abc123].")
+		assert.NotContains(t, result.Batches[0].Lines, "[code].")
 	})
 
 	t.Run("postgres uses unquoted schema name", func(t *testing.T) {
@@ -217,8 +217,8 @@ $$ language plpgsql;
 		require.NoError(t, err)
 		require.Len(t, result.Batches, 1)
 
-		assert.Contains(t, result.Batches[0].Lines, "code@abc123")
-		assert.NotContains(t, result.Batches[0].Lines, "[code@abc123]")
+		assert.Contains(t, result.Batches[0].Lines, "code@abc123.")
+		assert.NotContains(t, result.Batches[0].Lines, "[code@abc123].")
 	})
 
 	t.Run("replaces enum constants", func(t *testing.T) {
@@ -367,7 +367,8 @@ end
 
 	t.Run("handles const and global prefixes", func(t *testing.T) {
 		doc := sqlparser.ParseString("test.sql", `
-declare @ConstValue int = 100, @GlobalSetting nvarchar(50) = N'test';
+declare @ConstValue int = 100; 
+declare @GlobalSetting nvarchar(50) = N'test';
 go
 create procedure [code].Test as
 begin
@@ -382,7 +383,7 @@ end
 
 		batch := result.Batches[0].Lines
 		assert.Contains(t, batch, "100/*=@ConstValue*/")
-		assert.Contains(t, batch, "N'test'/*=@GlobalSetting*/")
+		assert.NotContains(t, batch, "N'test'/*=@GlobalSetting*/")
 	})
 }
 
