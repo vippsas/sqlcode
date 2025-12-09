@@ -217,7 +217,7 @@ $$ language plpgsql;
 		require.NoError(t, err)
 		require.Len(t, result.Batches, 1)
 
-		assert.Contains(t, result.Batches[0].Lines, "code@abc123.")
+		assert.Contains(t, result.Batches[0].Lines, `"code@abc123".`)
 		assert.NotContains(t, result.Batches[0].Lines, "[code@abc123].")
 	})
 
