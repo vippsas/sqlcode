@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix: 
-        drivers: ['mssql','pgsql']
+        driver: ['mssql','pgsql']
     steps:
       - uses: actions/checkout@v5
 
