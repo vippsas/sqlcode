@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
 	"strings"
 
@@ -131,7 +132,6 @@ func sqlcodeTransformCreate(declares map[string]string, c sqlparser.Create, quot
 				result.lineNumberCorrections = append(result.lineNumberCorrections, lineNumberCorrection{relativeLine, newlineCount})
 			}
 		}
-
 		if _, err = w.WriteString(token); err != nil {
 			return
 		}
@@ -153,25 +153,29 @@ func Preprocess(doc sqlparser.Document, schemasuffix string, driver driver.Drive
 		declares[dec.VariableName] = dec.Literal.RawValue
 	}
 
+	// The current sql driver that we are preparring for
+	currentDriver := reflect.TypeOf(driver)
+
+	// the default target for mssql
+	target := fmt.Sprintf(`[code@%s]`, schemasuffix)
+
+	// pgsql target
+	if _, ok := driver.(*stdlib.Driver); ok {
+		target = fmt.Sprintf(`"code@%s"`, schemasuffix)
+	}
+
 	for _, create := range doc.Creates {
 		if len(create.Body) == 0 {
 			continue
 		}
-		if create.Driver != driver {
-			// continue
+		if !currentDriver.AssignableTo(reflect.TypeOf(create.Driver)) {
+			// this batch is for a different sql driver
+			continue
 		}
-		// TODO(ks) this is not reached
-		target := "[code@" + schemasuffix + "]"
-
-		if _, ok := create.Driver.(*stdlib.Driver); ok {
-			target = "code@" + schemasuffix
-		}
-
 		batch, err := sqlcodeTransformCreate(declares, create, target)
 		if err != nil {
 			return result, fmt.Errorf("failed to transform create: %w", err)
 		}
-		fmt.Print(batch)
 		result.Batches = append(result.Batches, batch)
 	}
 

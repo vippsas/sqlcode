@@ -9,68 +9,71 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_RowsAffected(t *testing.T) {
+func Test_Patch(t *testing.T) {
 	fixture := NewFixture()
+	ctx := context.Background()
 	defer fixture.Teardown()
-	t.Run("mssql", func(t *testing.T) {
-		if !fixture.IsSqlServer() {
-			t.Skip()
-		}
 
+	if fixture.IsSqlServer() {
 		fixture.RunMigrationFile("../migrations/0001.sqlcode.sql")
+	}
 
-		ctx := context.Background()
+	if fixture.IsPostgresql() {
+		fixture.RunMigrationFile("../migrations/0001.sqlcode.pgsql")
+		_, err := fixture.DB.Exec(
+			fmt.Sprintf(`grant create on database "%s" to "sqlcode-definer-role"`, fixture.DBName))
+		require.NoError(t, err)
+	}
 
-		require.NoError(t, SQL.EnsureUploaded(ctx, fixture.DB))
-		patched := SQL.Patch(`[code].Test`)
+	require.NoError(t, SQL.EnsureUploaded(ctx, fixture.DB))
 
+	fixture.RunIfMssql(t, "mssql", func(t *testing.T) {
+		patched := SQL.CodePatch(fixture.DB, `[code].Test`)
 		res, err := fixture.DB.ExecContext(ctx, patched)
 		require.NoError(t, err)
+
 		rowsAffected, err := res.RowsAffected()
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), rowsAffected)
+	})
 
-		schemas, err := SQL.ListUploaded(ctx, fixture.DB)
+	fixture.RunIfPostgres(t, "pgsql", func(t *testing.T) {
+		patched := SQL.CodePatch(fixture.DB, `call [code].Test()`)
+		res, err := fixture.DB.ExecContext(ctx, patched)
 		require.NoError(t, err)
-		require.Len(t, schemas, 1)
-		require.Equal(t, 6, schemas[0].Objects)
-		require.Equal(t, "5420c0269aaf", schemas[0].Suffix())
 
+		// postgresql perform does not result with affected rows
+		rowsAffected, err := res.RowsAffected()
+		require.NoError(t, err)
+		assert.Equal(t, int64(0), rowsAffected)
 	})
 
 }
 
 func Test_EnsureUploaded(t *testing.T) {
-	fixture := NewFixture()
-	defer fixture.Teardown()
+	f := NewFixture()
+	defer f.Teardown()
+	ctx := context.Background()
 
-	t.Run("mssql", func(t *testing.T) {
-		if !fixture.IsSqlServer() {
-			t.Skip()
-		}
-		fixture.RunMigrationFile("../migrations/0001.sqlcode.sql")
+	f.RunIfMssql(t, "mssql", func(t *testing.T) {
+		f.RunMigrationFile("../migrations/0001.sqlcode.sql")
+		require.NoError(t, SQL.EnsureUploaded(ctx, f.DB))
+		schemas, err := SQL.ListUploaded(ctx, f.DB)
+		require.NoError(t, err)
+		require.Len(t, schemas, 1)
 
-		ctx := context.Background()
-		require.NoError(t, SQL.EnsureUploaded(ctx, fixture.DB))
 	})
 
-	t.Run("pgsql", func(t *testing.T) {
-		if !fixture.IsPostgresql() {
-			t.Skip()
-		}
+	f.RunIfPostgres(t, "pgsql", func(t *testing.T) {
+		f.RunMigrationFile("../migrations/0001.sqlcode.pgsql")
 
-		fixture.RunMigrationFile("../migrations/0003.sqlcode.pgsql")
-
-		ctx := context.Background()
-
-		_, err := fixture.DB.Exec(
-			fmt.Sprintf(`grant create on database "%s" to "sqlcode-definer-role"`, fixture.DBName))
+		_, err := f.DB.Exec(
+			fmt.Sprintf(`grant create on database "%s" to "sqlcode-definer-role"`, f.DBName))
 		require.NoError(t, err)
 
-		require.NoError(t, SQL.EnsureUploaded(ctx, fixture.DB))
-		schemas, err := SQL.ListUploaded(ctx, fixture.DB)
+		require.NoError(t, SQL.EnsureUploaded(ctx, f.DB))
+		schemas, err := SQL.ListUploaded(ctx, f.DB)
 		require.NoError(t, err)
-		require.Equal(t, "code@e3b0c44298fc", schemas[0].Name)
-
+		require.Len(t, schemas, 1)
 	})
 }

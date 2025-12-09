@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"testing"
 	"time"
 
 	mssql "github.com/denisenkom/go-mssqldb"
@@ -140,6 +141,24 @@ func NewFixture() *Fixture {
 		if err != nil {
 			panic(err)
 		}
+
+		var user string
+		err = fixture.DB.QueryRow(`select current_user`).Scan(&user)
+		if err != nil {
+			panic(err)
+		}
+		_, err = fixture.DB.Exec(fmt.Sprintf(`GRANT ALL ON DATABASE "%s" TO sa;`, fixture.DBName))
+		if err != nil {
+			panic(err)
+		}
+		_, err = fixture.DB.Exec(fmt.Sprintf(`GRANT ALL PRIVILEGES ON SCHEMA public TO %s;`, user))
+		if err != nil {
+			panic(err)
+		}
+		_, err = fixture.DB.Exec(fmt.Sprintf(`ALTER DATABASE "%s" OWNER TO sa;`, fixture.DBName))
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	return &fixture
@@ -175,5 +194,17 @@ func (f *Fixture) RunMigrationFile(filename string) {
 			fmt.Println(p)
 			panic(err)
 		}
+	}
+}
+
+func (f *Fixture) RunIfPostgres(t *testing.T, name string, fn func(t *testing.T)) {
+	if f.IsPostgresql() {
+		t.Run(name, fn)
+	}
+}
+
+func (f *Fixture) RunIfMssql(t *testing.T, name string, fn func(t *testing.T)) {
+	if f.IsSqlServer() {
+		t.Run(name, fn)
 	}
 }
