@@ -1,7 +1,7 @@
-FROM golang:1.25.1 AS builder
+FROM golang:1.25 AS builder
 WORKDIR /sqlcode
 ENV GODEBUG="x509negativeserial=1"
 COPY . .
 RUN go mod tidy
 # Skip the example folder because it has examples of what-not-to-do
-CMD ["go", "test", "-v", "$(go list ./... | grep -v './example')"]
+CMD ["go", "test", "-v", "./..."]
