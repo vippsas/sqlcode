@@ -129,13 +129,6 @@ func (e Error) WithoutPos() Error {
 	return Error{Message: e.Message}
 }
 
-type Document struct {
-	PragmaIncludeIf []string
-	Creates         []Create
-	Declares        []Declare
-	Errors          []Error
-}
-
 func (c Create) Serialize(w io.StringWriter) error {
 	for _, l := range c.Body {
 		if _, err := w.WriteString(l.RawValue); err != nil {
