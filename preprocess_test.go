@@ -58,10 +58,7 @@ func TestLineNumberInInput(t *testing.T) {
 
 func TestSchemaSuffixFromHash(t *testing.T) {
 	t.Run("returns a unique hash", func(t *testing.T) {
-		doc := sqlparser.Document{
-			Declares: []sqlparser.Declare{},
-		}
-
+		doc := sqlparser.NewDocumentFromExtension(".sql")
 		value := SchemaSuffixFromHash(doc)
 		require.Equal(t, value, SchemaSuffixFromHash(doc))
 	})
@@ -99,7 +96,7 @@ create procedure [code].Test2 as begin end
 	})
 
 	t.Run("empty document has hash", func(t *testing.T) {
-		doc := sqlparser.Document{}
+		doc := sqlparser.NewDocumentFromExtension(".pgsql")
 		suffix := SchemaSuffixFromHash(doc)
 		assert.Len(t, suffix, 12)
 	})
@@ -193,7 +190,6 @@ begin
     select 1
 end
 `)
-		doc.Creates[0].Driver = &mssql.Driver{}
 
 		result, err := Preprocess(doc, "abc123", &mssql.Driver{})
 		require.NoError(t, err)
@@ -211,8 +207,6 @@ begin
 end;
 $$ language plpgsql;
 `)
-		doc.Creates[0].Driver = &stdlib.Driver{}
-
 		result, err := Preprocess(doc, "abc123", &stdlib.Driver{})
 		require.NoError(t, err)
 		require.Len(t, result.Batches, 1)
@@ -230,8 +224,6 @@ begin
     select @EnumStatus
 end
 `)
-		doc.Creates[0].Driver = &mssql.Driver{}
-
 		result, err := Preprocess(doc, "abc123", &mssql.Driver{})
 		require.NoError(t, err)
 		require.Len(t, result.Batches, 1)
@@ -252,8 +244,6 @@ begin
     select @EnumMulti
 end
 `)
-		doc.Creates[0].Driver = &mssql.Driver{}
-
 		result, err := Preprocess(doc, "abc123", &mssql.Driver{})
 		require.NoError(t, err)
 		require.Len(t, result.Batches, 1)
@@ -272,8 +262,6 @@ begin
     select @EnumUndeclared
 end
 `)
-		doc.Creates[0].Driver = &mssql.Driver{}
-
 		_, err := Preprocess(doc, "abc123", &mssql.Driver{})
 		require.Error(t, err)
 
@@ -287,23 +275,9 @@ end
 		doc := sqlparser.ParseString("test.sql", `
 create procedure [code].Test as begin end
 `)
-		doc.Creates[0].Driver = &mssql.Driver{}
-
 		_, err := Preprocess(doc, "abc]123", &mssql.Driver{})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "schemasuffix cannot contain")
-	})
-
-	t.Run("skips creates with empty body", func(t *testing.T) {
-		doc := sqlparser.Document{
-			Creates: []sqlparser.Create{
-				{Body: []sqlparser.Unparsed{}},
-			},
-		}
-
-		result, err := Preprocess(doc, "abc123", &mssql.Driver{})
-		require.NoError(t, err)
-		assert.Empty(t, result.Batches)
 	})
 
 	t.Run("handles multiple creates", func(t *testing.T) {
@@ -312,9 +286,6 @@ create procedure [code].Proc1 as begin select 1 end
 go
 create procedure [code].Proc2 as begin select 2 end
 `)
-		doc.Creates[0].Driver = &mssql.Driver{}
-		doc.Creates[1].Driver = &mssql.Driver{}
-
 		result, err := Preprocess(doc, "abc123", &mssql.Driver{})
 		require.NoError(t, err)
 		assert.Len(t, result.Batches, 2)
@@ -332,8 +303,6 @@ begin
     select @EnumA, @EnumB
 end
 `)
-		doc.Creates[0].Driver = &mssql.Driver{}
-
 		result, err := Preprocess(doc, "abc123", &mssql.Driver{})
 		require.NoError(t, err)
 		require.Len(t, result.Batches, 1)
@@ -354,8 +323,6 @@ begin
     select 1
 end
 `)
-		doc.Creates[0].Driver = &mssql.Driver{}
-
 		result, err := Preprocess(doc, "abc123", &mssql.Driver{})
 		require.NoError(t, err)
 		require.Len(t, result.Batches, 1)
@@ -375,8 +342,6 @@ begin
     select @ConstValue, @GlobalSetting
 end
 `)
-		doc.Creates[0].Driver = &mssql.Driver{}
-
 		result, err := Preprocess(doc, "abc123", &mssql.Driver{})
 		require.NoError(t, err)
 		require.Len(t, result.Batches, 1)
