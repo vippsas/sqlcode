@@ -13,6 +13,8 @@ type TSqlDocument struct {
 	creates         []Create
 	declares        []Declare
 	errors          []Error
+
+	Pragma
 }
 
 func (d TSqlDocument) HasErrors() bool {
@@ -30,8 +32,19 @@ func (d TSqlDocument) Declares() []Declare {
 func (d TSqlDocument) Errors() []Error {
 	return d.errors
 }
-func (d TSqlDocument) PragmaIncludeIf() []string {
-	return d.pragmaIncludeIf
+
+func (d *TSqlDocument) Parse(s *Scanner) error {
+	err := d.ParsePragmas(s)
+	if err != nil {
+		d.addError(s, err.Error())
+	}
+
+	hasMore := d.parseBatch(s, true)
+	for hasMore {
+		hasMore = d.parseBatch(s, false)
+	}
+
+	return nil
 }
 
 func (d *TSqlDocument) Sort() {
@@ -77,30 +90,6 @@ func (d *TSqlDocument) Include(other Document) {
 	d.declares = append(d.declares, other.Declares()...)
 	d.creates = append(d.creates, other.Creates()...)
 	d.errors = append(d.errors, other.Errors()...)
-}
-
-func (d *TSqlDocument) parseSinglePragma(s *Scanner) {
-	pragma := strings.TrimSpace(strings.TrimPrefix(s.Token(), "--sqlcode:"))
-	if pragma == "" {
-		return
-	}
-	parts := strings.Split(pragma, " ")
-	if len(parts) != 2 {
-		d.addError(s, "Illegal pragma: "+s.Token())
-		return
-	}
-	if parts[0] != "include-if" {
-		d.addError(s, "Illegal pragma: "+s.Token())
-		return
-	}
-	d.pragmaIncludeIf = append(d.pragmaIncludeIf, strings.Split(parts[1], ",")...)
-}
-
-func (d *TSqlDocument) ParsePragmas(s *Scanner) {
-	for s.TokenType() == PragmaToken {
-		d.parseSinglePragma(s)
-		s.NextNonWhitespaceToken()
-	}
 }
 
 func (d TSqlDocument) Empty() bool {
@@ -272,7 +261,7 @@ func (doc *TSqlDocument) parseDeclareBatch(s *Scanner) (hasMore bool) {
 	}
 }
 
-func (doc *TSqlDocument) ParseBatch(s *Scanner, isFirst bool) (hasMore bool) {
+func (doc *TSqlDocument) parseBatch(s *Scanner, isFirst bool) (hasMore bool) {
 	var nodes []Unparsed
 	var docstring []PosString
 	newLineEncounteredInDocstring := false

@@ -10,6 +10,10 @@ func (d PGSqlDocument) HasErrors() bool {
 	return len(d.errors) > 0
 }
 
+func (d *PGSqlDocument) Parse(s *Scanner) error {
+	return nil
+}
+
 func (d PGSqlDocument) Creates() []Create {
 	return d.creates
 }
