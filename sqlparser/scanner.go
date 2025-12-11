@@ -565,6 +565,8 @@ var reservedWords = map[string]struct{}{
 	"writetext":                      struct{}{},
 	"exit":                           struct{}{},
 	"proc":                           struct{}{},
+	// pgsql
+	"replace": struct{}{},
 }
 
 // apparently 'within group' is also reserved but dropping that..
