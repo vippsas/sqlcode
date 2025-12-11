@@ -19,9 +19,7 @@ type Document interface {
 	PragmaIncludeIf() []string
 	Include(other Document)
 	Sort()
-	ParsePragmas(s *Scanner)
-	ParseBatch(s *Scanner, isFirst bool) (hasMore bool)
-
+	Parse(s *Scanner) error
 	WithoutPos() Document
 }
 

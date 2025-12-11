@@ -61,14 +61,10 @@ func Parse(s *Scanner, result Document) {
 	//
 	// `s` will typically never be positioned on whitespace except in
 	// whitespace-preserving parsing
-
-	filepath.Ext(s.input)
-
 	s.NextNonWhitespaceToken()
-	result.ParsePragmas(s)
-	hasMore := result.ParseBatch(s, true)
-	for hasMore {
-		hasMore = result.ParseBatch(s, false)
+	err := result.Parse(s)
+	if err != nil {
+		panic(fmt.Sprintf("failed to parse document: %s: %e", s.file, err))
 	}
 	return
 }
