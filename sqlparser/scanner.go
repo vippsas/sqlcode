@@ -1,11 +1,12 @@
 package sqlparser
 
 import (
-	"github.com/smasher164/xid"
 	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/smasher164/xid"
 )
 
 // dedicated type for reference to file, in case we need to refactor this later..
@@ -38,6 +39,10 @@ type Scanner struct {
 	indexAtStopLine  int // value of `curIndex` after newline char
 
 	reservedWord string // in the event that the token is a ReservedWordToken, this contains the lower-case version
+}
+
+func NewScanner(path FileRef, input string) *Scanner {
+	return &Scanner{input: input, file: path}
 }
 
 type TokenType int
@@ -316,7 +321,7 @@ func (s *Scanner) scanIdentifier() {
 	s.curIndex = len(s.input)
 }
 
-// DRY helper to handle both '' and ]] escapes
+// DRY helper to handle both ” and ]] escapes
 func (s *Scanner) scanUntilSingleDoubleEscapes(endmarker rune, tokenType TokenType, unterminatedTokenType TokenType) TokenType {
 	skipnext := false
 	for i, r := range s.input[s.curIndex:] {
