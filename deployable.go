@@ -277,7 +277,7 @@ func (d *Deployable) IsUploadedFromCache(dbc DB) bool {
 // TODO: StringConst. This requires parsing a SQL literal, a bit too complex
 // to code up just-in-case
 func (d Deployable) IntConst(s string) (int, error) {
-	for _, declare := range d.CodeBase.Declares {
+	for _, declare := range d.CodeBase.Declares() {
 		if declare.VariableName == s {
 			// TODO: more robust integer SQL parsing than this; only works
 			// in most common cases
@@ -311,8 +311,8 @@ type Options struct {
 func Include(opts Options, fsys ...fs.FS) (result Deployable, err error) {
 
 	parsedFiles, doc, err := sqlparser.ParseFilesystems(fsys, opts.IncludeTags)
-	if len(doc.Errors) > 0 && !opts.PartialParseResults {
-		return Deployable{}, SQLCodeParseErrors{Errors: doc.Errors}
+	if doc.HasErrors() && !opts.PartialParseResults {
+		return Deployable{}, SQLCodeParseErrors{Errors: doc.Errors()}
 	}
 
 	result.CodeBase = doc

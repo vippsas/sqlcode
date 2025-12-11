@@ -44,7 +44,7 @@ func AdvanceAndCopy(s *Scanner, target *[]Unparsed) {
 	}
 }
 
-func Parse(s *Scanner, result *Document) {
+func Parse(s *Scanner, result Document) {
 	// Top-level parse; this focuses on splitting into "batches" separated
 	// by 'go'.
 
@@ -62,17 +62,14 @@ func Parse(s *Scanner, result *Document) {
 	// `s` will typically never be positioned on whitespace except in
 	// whitespace-preserving parsing
 
-	s.NextNonWhitespaceToken()
-	result.parsePragmas(s)
-	hasMore := result.parseBatch(s, true)
-	for hasMore {
-		hasMore = result.parseBatch(s, false)
-	}
-	return
-}
+	filepath.Ext(s.input)
 
-func ParseString(filename FileRef, input string) (result Document) {
-	Parse(&Scanner{input: input, file: filename}, &result)
+	s.NextNonWhitespaceToken()
+	result.ParsePragmas(s)
+	hasMore := result.ParseBatch(s, true)
+	for hasMore {
+		hasMore = result.ParseBatch(s, false)
+	}
 	return
 }
 
@@ -129,10 +126,10 @@ func ParseFilesystems(fslst []fs.FS, includeTags []string) (filenames []string, 
 					}
 					hashes[hash] = pathDesc
 
-					var fdoc Document
-					Parse(&Scanner{input: string(buf), file: FileRef(path)}, &fdoc)
+					fdoc := NewDocumentFromExtension(extension)
+					Parse(&Scanner{input: string(buf), file: FileRef(path)}, fdoc)
 
-					if matchesIncludeTags(fdoc.PragmaIncludeIf, includeTags) {
+					if matchesIncludeTags(fdoc.PragmaIncludeIf(), includeTags) {
 						filenames = append(filenames, pathDesc)
 						result.Include(fdoc)
 					}
@@ -144,17 +141,7 @@ func ParseFilesystems(fslst []fs.FS, includeTags []string) (filenames []string, 
 		}
 	}
 
-	// Do the topological sort; and include any error with it as part
-	// of `result`, *not* return it as err
-	sortedCreates, errpos, sortErr := TopologicalSort(result.Creates)
-	if sortErr != nil {
-		result.Errors = append(result.Errors, Error{
-			Pos:     errpos,
-			Message: sortErr.Error(),
-		})
-	} else {
-		result.Creates = sortedCreates
-	}
+	result.Sort()
 
 	return
 }

@@ -24,8 +24,8 @@ end;
 $$;
 	`)
 
-	require.Len(t, doc.Creates, 1)
-	require.Equal(t, &stdlib.Driver{}, doc.Creates[0].Driver)
+	require.Len(t, doc.Creates(), 1)
+	require.Equal(t, &stdlib.Driver{}, doc.Creates()[0].Driver)
 }
 
 func TestParserSmokeTest(t *testing.T) {
@@ -60,8 +60,8 @@ end;
 `)
 	docNoPos := doc.WithoutPos()
 
-	require.Equal(t, 1, len(doc.Creates))
-	c := doc.Creates[0]
+	require.Equal(t, 1, len(doc.Creates()))
+	c := doc.Creates()[0]
 	require.Equal(t, &mssql.Driver{}, c.Driver)
 
 	assert.Equal(t, "[TestFunc]", c.QuotedName.Value)
@@ -82,7 +82,7 @@ end;
 			{
 				Message: "'declare' statement only allowed in first batch",
 			},
-		}, docNoPos.Errors)
+		}, docNoPos.Errors())
 
 	assert.Equal(t,
 		[]Declare{
@@ -130,7 +130,7 @@ end;
 				},
 			},
 		},
-		docNoPos.Declares,
+		docNoPos.Declares(),
 	)
 	//	repr.Println(doc)
 }
@@ -150,21 +150,21 @@ create function [code].Two();
 		{
 			Message: "a procedure/function must be alone in a batch; use 'go' to split batches",
 		},
-	}, doc.Errors)
+	}, doc.Errors())
 }
 
 func TestBuggyDeclare(t *testing.T) {
 	// this caused parses to infinitely loop; regression test...
 	doc := ParseString("test.sql", `declare    @EnumA int = 4    @EnumB tinyint = 5    @ENUM_C bigint = 435;`)
-	assert.Equal(t, 1, len(doc.Errors))
-	assert.Equal(t, "Unexpected: @EnumB", doc.Errors[0].Message)
+	assert.Equal(t, 1, len(doc.Errors()))
+	assert.Equal(t, "Unexpected: @EnumB", doc.Errors()[0].Message)
 }
 
 func TestCreateType(t *testing.T) {
 	doc := ParseString("test.sql", `create type [code].MyType as table (x int not null primary key);`)
-	assert.Equal(t, 1, len(doc.Creates))
-	assert.Equal(t, "type", doc.Creates[0].CreateType)
-	assert.Equal(t, "[MyType]", doc.Creates[0].QuotedName.Value)
+	assert.Equal(t, 1, len(doc.Creates()))
+	assert.Equal(t, "type", doc.Creates()[0].CreateType)
+	assert.Equal(t, "[MyType]", doc.Creates()[0].QuotedName.Value)
 }
 
 func TestPragma(t *testing.T) {
@@ -179,7 +179,7 @@ create procedure [code].ProcedureShouldAlsoHavePragmasAnnotated()
 func TestInfiniteLoopRegression(t *testing.T) {
 	// success if we terminate!...
 	doc := ParseString("test.sql", `@declare`)
-	assert.Equal(t, 1, len(doc.Errors))
+	assert.Equal(t, 1, len(doc.Errors()))
 }
 
 func TestDeclareSeparation(t *testing.T) {
@@ -190,7 +190,7 @@ func TestDeclareSeparation(t *testing.T) {
 	doc := ParseString("test.sql", `
 declare @EnumFirst int = 3, @EnumSecond varchar(max) = 'hello'declare @EnumThird int=3 declare @EnumFourth int=4;declare @EnumFifth int =5
 `)
-	//repr.Println(doc.Declares)
+	//repr.Println(doc.Declares())
 	require.Equal(t, []Declare{
 		{
 			VariableName: "@EnumFirst",
@@ -217,7 +217,7 @@ declare @EnumFirst int = 3, @EnumSecond varchar(max) = 'hello'declare @EnumThird
 			Datatype:     Type{BaseType: "int"},
 			Literal:      Unparsed{Type: NumberToken, RawValue: "5"},
 		},
-	}, doc.WithoutPos().Declares)
+	}, doc.WithoutPos().Declares())
 }
 
 func TestBatchDivisionsAndCreateStatements(t *testing.T) {
@@ -232,7 +232,7 @@ go
 create type [code].Batch3 as table (x int);
 `)
 	commentCount := 0
-	for _, c := range doc.Creates {
+	for _, c := range doc.Creates() {
 		for _, b := range c.Body {
 			if strings.Contains(b.RawValue, "2nd") {
 				commentCount++
@@ -251,13 +251,13 @@ create type [code].Type1 as table (x int);
 create type [code].Type2 as table (x int);
 create type [code].Type3 as table (x int);
 `)
-	require.Equal(t, 3, len(doc.Creates))
-	assert.Equal(t, "[Type1]", doc.Creates[0].QuotedName.Value)
-	assert.Equal(t, "[Type3]", doc.Creates[2].QuotedName.Value)
+	require.Equal(t, 3, len(doc.Creates()))
+	assert.Equal(t, "[Type1]", doc.Creates()[0].QuotedName.Value)
+	assert.Equal(t, "[Type3]", doc.Creates()[2].QuotedName.Value)
 	// There was a bug that the last item in the body would be the 'create'
 	// of the next statement; regression test..
-	assert.Equal(t, "\n", doc.Creates[0].Body[len(doc.Creates[0].Body)-1].RawValue)
-	assert.Equal(t, "create", doc.Creates[1].Body[0].RawValue)
+	assert.Equal(t, "\n", doc.Creates()[0].Body[len(doc.Creates()[0].Body)-1].RawValue)
+	assert.Equal(t, "create", doc.Creates()[1].Body[0].RawValue)
 }
 
 func TestCreateProcs(t *testing.T) {
@@ -270,10 +270,10 @@ create type [code].MyType ()
 create procedure [code].MyProcedure ()
 `)
 	// First function and last procedure triggers errors.
-	require.Equal(t, 2, len(doc.Errors))
+	require.Equal(t, 2, len(doc.Errors()))
 	emsg := "a procedure/function must be alone in a batch; use 'go' to split batches"
-	assert.Equal(t, emsg, doc.Errors[0].Message)
-	assert.Equal(t, emsg, doc.Errors[1].Message)
+	assert.Equal(t, emsg, doc.Errors()[0].Message)
+	assert.Equal(t, emsg, doc.Errors()[1].Message)
 
 }
 
@@ -283,14 +283,14 @@ func TestCreateProcs2(t *testing.T) {
 create type [code].MyType ()
 create procedure [code].FirstProc as table (x int)
 `)
-	//repr.Println(doc.Errors)
+	//repr.Println(doc.Errors())
 
 	// Code above was mainly to be able to step through parser in a given way.
 	// First function triggers an error. Then create type is parsed which is
 	// fine sharing a batch with others.
-	require.Equal(t, 1, len(doc.Errors))
+	require.Equal(t, 1, len(doc.Errors()))
 	emsg := "a procedure/function must be alone in a batch; use 'go' to split batches"
-	assert.Equal(t, emsg, doc.Errors[0].Message)
+	assert.Equal(t, emsg, doc.Errors()[0].Message)
 }
 
 func TestCreateProcsAndCheckForRoutineName(t *testing.T) {
@@ -322,12 +322,12 @@ create procedure [code].[transform:safeguarding.Calculation/HEAD](@now datetime2
 		},
 	}
 	for _, tc := range testcases {
-		require.Equal(t, 0, len(tc.doc.Errors))
-		assert.Len(t, tc.doc.Creates, 1)
-		assert.Greater(t, len(tc.doc.Creates[0].Body), tc.expectedIndex)
+		require.Equal(t, 0, len(tc.doc.Errors()))
+		assert.Len(t, tc.doc.Creates(), 1)
+		assert.Greater(t, len(tc.doc.Creates()[0].Body), tc.expectedIndex)
 		assert.Equal(t,
 			fmt.Sprintf(templateRoutineName, tc.expectedProcName),
-			tc.doc.Creates[0].Body[tc.expectedIndex].RawValue,
+			tc.doc.Creates()[0].Body[tc.expectedIndex].RawValue,
 		)
 	}
 }
@@ -342,9 +342,9 @@ end
 	// Code above was mainly to be able to step through parser in a given way.
 	// First function triggers an error. Then create type is parsed which is
 	// fine sharing a batch with others.
-	require.Equal(t, 2, len(doc.Errors))
-	assert.Equal(t, "`go` should be alone on a line without any comments", doc.Errors[0].Message)
-	assert.Equal(t, "Expected 'declare' or 'create', got: end", doc.Errors[1].Message)
+	require.Equal(t, 2, len(doc.Errors()))
+	assert.Equal(t, "`go` should be alone on a line without any comments", doc.Errors()[0].Message)
+	assert.Equal(t, "Expected 'declare' or 'create', got: end", doc.Errors()[1].Message)
 }
 
 func TestCreateAnnotationHappyDay(t *testing.T) {
@@ -362,8 +362,8 @@ create procedure [code].Foo as begin end
 `)
 	assert.Equal(t,
 		"-- This is part of annotation\n--! key1: a\n--! key2: b\n--! key3: [1,2,3]",
-		doc.Creates[0].DocstringAsString())
-	s, err := doc.Creates[0].DocstringYamldoc()
+		doc.Creates()[0].DocstringAsString())
+	s, err := doc.Creates()[0].DocstringYamldoc()
 	assert.NoError(t, err)
 	assert.Equal(t,
 		"key1: a\nkey2: b\nkey3: [1,2,3]",
@@ -372,7 +372,7 @@ create procedure [code].Foo as begin end
 	var x struct {
 		Key1 string `yaml:"key1"`
 	}
-	require.NoError(t, doc.Creates[0].ParseYamlInDocstring(&x))
+	require.NoError(t, doc.Creates()[0].ParseYamlInDocstring(&x))
 	assert.Equal(t, "a", x.Key1)
 }
 
@@ -387,7 +387,7 @@ create procedure [code].Foo as begin end
 `)
 	assert.Equal(t,
 		"-- docstring here",
-		doc.Creates[0].DocstringAsString())
+		doc.Creates()[0].DocstringAsString())
 }
 
 func TestCreateAnnotationErrors(t *testing.T) {
@@ -397,7 +397,7 @@ func TestCreateAnnotationErrors(t *testing.T) {
 -- This comment after yamldoc is illegal; this also prevents multiple embedded YAML documents
 create procedure [code].Foo as begin end
 `)
-	_, err := doc.Creates[0].DocstringYamldoc()
+	_, err := doc.Creates()[0].DocstringYamldoc()
 	assert.Equal(t, "test.sql:3:1 once embedded yaml document is started (lines prefixed with `--!`), it must continue until create statement",
 		err.Error())
 
@@ -407,7 +407,7 @@ create procedure [code].Foo as begin end
 --!key4: 1
 create procedure [code].Foo as begin end
 `)
-	_, err = doc.Creates[0].DocstringYamldoc()
+	_, err = doc.Creates()[0].DocstringYamldoc()
 	assert.Equal(t, "test.sql:3:1 YAML document in docstring; missing space after `--!`",
 		err.Error())
 
@@ -433,8 +433,8 @@ create function [code].Func1() returns int as begin return 1 end
 		filenames, doc, err := ParseFilesystems([]fs.FS{fsys}, nil)
 		require.NoError(t, err)
 		assert.Len(t, filenames, 2)
-		assert.Len(t, doc.Creates, 2)
-		assert.Len(t, doc.Declares, 1)
+		assert.Len(t, doc.Creates(), 2)
+		assert.Len(t, doc.Declares(), 1)
 	})
 
 	t.Run("filters by include tags", func(t *testing.T) {
@@ -455,8 +455,8 @@ create procedure [code].Excluded as begin end
 		require.NoError(t, err)
 		assert.Len(t, filenames, 1)
 		assert.Contains(t, filenames[0], "included.sql")
-		assert.Len(t, doc.Creates, 1)
-		assert.Equal(t, "[Included]", doc.Creates[0].QuotedName.Value)
+		assert.Len(t, doc.Creates(), 1)
+		assert.Equal(t, "[Included]", doc.Creates()[0].QuotedName.Value)
 	})
 
 	t.Run("detects duplicate files with same hash", func(t *testing.T) {
@@ -488,7 +488,7 @@ create procedure [code].Excluded as begin end
 		require.NoError(t, err)
 		assert.Len(t, filenames, 1)
 		assert.Contains(t, filenames[0], "sqlcode.sql")
-		assert.Len(t, doc.Creates, 1)
+		assert.Len(t, doc.Creates(), 1)
 	})
 
 	t.Run("skips hidden directories", func(t *testing.T) {
@@ -508,7 +508,7 @@ create procedure [code].Excluded as begin end
 		require.NoError(t, err)
 		assert.Len(t, filenames, 1)
 		assert.Contains(t, filenames[0], "visible.sql")
-		assert.Len(t, doc.Creates, 1)
+		assert.Len(t, doc.Creates(), 1)
 	})
 
 	t.Run("handles dependencies and topological sort", func(t *testing.T) {
@@ -524,10 +524,10 @@ create procedure [code].Excluded as begin end
 		filenames, doc, err := ParseFilesystems([]fs.FS{fsys}, nil)
 		require.NoError(t, err)
 		assert.Len(t, filenames, 2)
-		assert.Len(t, doc.Creates, 2)
+		assert.Len(t, doc.Creates(), 2)
 		// Proc2 should come before Proc1 due to dependency
-		assert.Equal(t, "[Proc2]", doc.Creates[0].QuotedName.Value)
-		assert.Equal(t, "[Proc1]", doc.Creates[1].QuotedName.Value)
+		assert.Equal(t, "[Proc2]", doc.Creates()[0].QuotedName.Value)
+		assert.Equal(t, "[Proc1]", doc.Creates()[1].QuotedName.Value)
 	})
 
 	t.Run("reports topological sort errors", func(t *testing.T) {
@@ -541,9 +541,9 @@ create procedure [code].Excluded as begin end
 		}
 
 		_, doc, err := ParseFilesystems([]fs.FS{fsys}, nil)
-		require.NoError(t, err)        // filesystem error should be nil
-		assert.NotEmpty(t, doc.Errors) // but parsing errors should exist
-		assert.Contains(t, doc.Errors[0].Message, "Detected a dependency cycle")
+		require.NoError(t, err)          // filesystem error should be nil
+		assert.NotEmpty(t, doc.Errors()) // but parsing errors should exist
+		assert.Contains(t, doc.Errors()[0].Message, "Detected a dependency cycle")
 	})
 
 	t.Run("handles multiple filesystems", func(t *testing.T) {
@@ -563,7 +563,7 @@ create procedure [code].Excluded as begin end
 		assert.Len(t, filenames, 2)
 		assert.Contains(t, filenames[0], "fs[0]:")
 		assert.Contains(t, filenames[1], "fs[1]:")
-		assert.Len(t, doc.Creates, 2)
+		assert.Len(t, doc.Creates(), 2)
 	})
 
 	t.Run("detects sqlcode files by pragma header", func(t *testing.T) {
@@ -578,7 +578,7 @@ create procedure NotInCodeSchema.Test as begin end`),
 		require.NoError(t, err)
 		assert.Len(t, filenames, 1)
 		// Should still parse even though it will have errors (not in [code] schema)
-		assert.NotEmpty(t, doc.Errors)
+		assert.NotEmpty(t, doc.Errors())
 	})
 
 	t.Run("handles pgsql extension", func(t *testing.T) {
@@ -599,8 +599,8 @@ $$;
 		filenames, doc, err := ParseFilesystems([]fs.FS{fsys}, nil)
 		require.NoError(t, err)
 		assert.Len(t, filenames, 1)
-		assert.Len(t, doc.Creates, 1)
-		assert.Equal(t, &stdlib.Driver{}, doc.Creates[0].Driver)
+		assert.Len(t, doc.Creates(), 1)
+		assert.Equal(t, &stdlib.Driver{}, doc.Creates()[0].Driver)
 	})
 
 	t.Run("empty filesystem returns empty results", func(t *testing.T) {
@@ -609,8 +609,8 @@ $$;
 		filenames, doc, err := ParseFilesystems([]fs.FS{fsys}, nil)
 		require.NoError(t, err)
 		assert.Empty(t, filenames)
-		assert.Empty(t, doc.Creates)
-		assert.Empty(t, doc.Declares)
+		assert.Empty(t, doc.Creates())
+		assert.Empty(t, doc.Declares())
 	})
 }
 
