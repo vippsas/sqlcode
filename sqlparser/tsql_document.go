@@ -178,6 +178,7 @@ loop:
 			!strings.HasPrefix(strings.ToLower(variableName), "@const") {
 			doc.addError(s, "sqlcode constants needs to have names starting with @Enum, @Global or @Const: "+variableName)
 		}
+
 		s.NextNonWhitespaceCommentToken()
 		var variableType Type
 		switch s.TokenType() {
@@ -195,13 +196,14 @@ loop:
 
 		switch s.NextNonWhitespaceCommentToken() {
 		case NumberToken, NVarcharLiteralToken, VarcharLiteralToken:
-			result = append(result, Declare{
+			declare := Declare{
 				Start:        declareStart,
 				Stop:         s.Stop(),
 				VariableName: variableName,
 				Datatype:     variableType,
 				Literal:      CreateUnparsed(s),
-			})
+			}
+			result = append(result, declare)
 		default:
 			doc.unexpectedTokenError(s)
 			doc.recoverToNextStatement(s)

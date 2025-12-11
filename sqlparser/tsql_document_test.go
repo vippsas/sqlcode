@@ -7,106 +7,108 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestDocument_addError(t *testing.T) {
-	t.Run("adds error with position", func(t *testing.T) {
-		doc := &TSqlDocument{}
-		s := NewScanner("test.sql", "select")
-		s.NextToken()
+func TestTSqlDocument(t *testing.T) {
+	t.Run("addError", func(t *testing.T) {
+		t.Run("adds error with position", func(t *testing.T) {
+			doc := &TSqlDocument{}
+			s := NewScanner("test.sql", "select")
+			s.NextToken()
 
-		doc.addError(s, "test error message")
-		require.True(t, doc.HasErrors())
-		assert.Equal(t, "test error message", doc.errors[0].Message)
-		assert.Equal(t, Pos{File: "test.sql", Line: 1, Col: 1}, doc.errors[0].Pos)
+			doc.addError(s, "test error message")
+			require.True(t, doc.HasErrors())
+			assert.Equal(t, "test error message", doc.errors[0].Message)
+			assert.Equal(t, Pos{File: "test.sql", Line: 1, Col: 1}, doc.errors[0].Pos)
+		})
+
+		t.Run("accumulates multiple errors", func(t *testing.T) {
+			doc := &TSqlDocument{}
+			s := NewScanner("test.sql", "abc def")
+			s.NextToken()
+			doc.addError(s, "error 1")
+			s.NextToken()
+			doc.addError(s, "error 2")
+
+			require.Len(t, doc.errors, 2)
+			assert.Equal(t, "error 1", doc.errors[0].Message)
+			assert.Equal(t, "error 2", doc.errors[1].Message)
+		})
+
+		t.Run("creates error with token text", func(t *testing.T) {
+			doc := &TSqlDocument{}
+			s := NewScanner("test.sql", "unexpected_token")
+			s.NextToken()
+
+			doc.unexpectedTokenError(s)
+
+			require.Len(t, doc.errors, 1)
+			assert.Equal(t, "Unexpected: unexpected_token", doc.errors[0].Message)
+		})
 	})
 
-	t.Run("accumulates multiple errors", func(t *testing.T) {
-		doc := &TSqlDocument{}
-		s := NewScanner("test.sql", "abc def")
-		s.NextToken()
-		doc.addError(s, "error 1")
-		s.NextToken()
-		doc.addError(s, "error 2")
+	t.Run("parseTypeExpression", func(t *testing.T) {
+		t.Run("parses simple type without args", func(t *testing.T) {
+			doc := &TSqlDocument{}
+			s := NewScanner("test.sql", "int")
+			s.NextToken()
 
-		require.Len(t, doc.errors, 2)
-		assert.Equal(t, "error 1", doc.errors[0].Message)
-		assert.Equal(t, "error 2", doc.errors[1].Message)
-	})
+			typ := doc.parseTypeExpression(s)
 
-	t.Run("creates error with token text", func(t *testing.T) {
-		doc := &TSqlDocument{}
-		s := NewScanner("test.sql", "unexpected_token")
-		s.NextToken()
+			assert.Equal(t, "int", typ.BaseType)
+			assert.Empty(t, typ.Args)
+		})
 
-		doc.unexpectedTokenError(s)
+		t.Run("parses type with single arg", func(t *testing.T) {
+			doc := &TSqlDocument{}
+			s := NewScanner("test.sql", "varchar(50)")
+			s.NextToken()
 
-		require.Len(t, doc.errors, 1)
-		assert.Equal(t, "Unexpected: unexpected_token", doc.errors[0].Message)
-	})
-}
+			typ := doc.parseTypeExpression(s)
 
-func TestDocument_parseTypeExpression(t *testing.T) {
-	t.Run("parses simple type without args", func(t *testing.T) {
-		doc := &TSqlDocument{}
-		s := NewScanner("test.sql", "int")
-		s.NextToken()
+			assert.Equal(t, "varchar", typ.BaseType)
+			assert.Equal(t, []string{"50"}, typ.Args)
+		})
 
-		typ := doc.parseTypeExpression(s)
+		t.Run("parses type with multiple args", func(t *testing.T) {
+			doc := &TSqlDocument{}
+			s := NewScanner("test.sql", "decimal(10, 2)")
+			s.NextToken()
 
-		assert.Equal(t, "int", typ.BaseType)
-		assert.Empty(t, typ.Args)
-	})
+			typ := doc.parseTypeExpression(s)
 
-	t.Run("parses type with single arg", func(t *testing.T) {
-		doc := &TSqlDocument{}
-		s := NewScanner("test.sql", "varchar(50)")
-		s.NextToken()
+			assert.Equal(t, "decimal", typ.BaseType)
+			assert.Equal(t, []string{"10", "2"}, typ.Args)
+		})
 
-		typ := doc.parseTypeExpression(s)
+		t.Run("parses type with max", func(t *testing.T) {
+			doc := &TSqlDocument{}
+			s := NewScanner("test.sql", "nvarchar(max)")
+			s.NextToken()
 
-		assert.Equal(t, "varchar", typ.BaseType)
-		assert.Equal(t, []string{"50"}, typ.Args)
-	})
+			typ := doc.parseTypeExpression(s)
 
-	t.Run("parses type with multiple args", func(t *testing.T) {
-		doc := &TSqlDocument{}
-		s := NewScanner("test.sql", "decimal(10, 2)")
-		s.NextToken()
+			assert.Equal(t, "nvarchar", typ.BaseType)
+			assert.Equal(t, []string{"max"}, typ.Args)
+		})
 
-		typ := doc.parseTypeExpression(s)
+		t.Run("handles invalid arg", func(t *testing.T) {
+			doc := &TSqlDocument{}
+			s := NewScanner("test.sql", "varchar(invalid)")
+			s.NextToken()
 
-		assert.Equal(t, "decimal", typ.BaseType)
-		assert.Equal(t, []string{"10", "2"}, typ.Args)
-	})
+			typ := doc.parseTypeExpression(s)
 
-	t.Run("parses type with max", func(t *testing.T) {
-		doc := &TSqlDocument{}
-		s := NewScanner("test.sql", "nvarchar(max)")
-		s.NextToken()
+			assert.Equal(t, "varchar", typ.BaseType)
+			assert.NotEmpty(t, doc.errors)
+		})
 
-		typ := doc.parseTypeExpression(s)
+		t.Run("panics if not on identifier", func(t *testing.T) {
+			doc := &TSqlDocument{}
+			s := NewScanner("test.sql", "123")
+			s.NextToken()
 
-		assert.Equal(t, "nvarchar", typ.BaseType)
-		assert.Equal(t, []string{"max"}, typ.Args)
-	})
-
-	t.Run("handles invalid arg", func(t *testing.T) {
-		doc := &TSqlDocument{}
-		s := NewScanner("test.sql", "varchar(invalid)")
-		s.NextToken()
-
-		typ := doc.parseTypeExpression(s)
-
-		assert.Equal(t, "varchar", typ.BaseType)
-		assert.NotEmpty(t, doc.errors)
-	})
-
-	t.Run("panics if not on identifier", func(t *testing.T) {
-		doc := &TSqlDocument{}
-		s := NewScanner("test.sql", "123")
-		s.NextToken()
-
-		assert.Panics(t, func() {
-			doc.parseTypeExpression(s)
+			assert.Panics(t, func() {
+				doc.parseTypeExpression(s)
+			})
 		})
 	})
 }
@@ -155,6 +157,9 @@ func TestDocument_parseDeclare(t *testing.T) {
 
 		declares := doc.parseDeclare(s)
 
+		// in this case when we detect the missing prefix,
+		// we add an error and continue parsing the declaration.
+		// this results with it being added
 		require.Len(t, declares, 1)
 		assert.NotEmpty(t, doc.errors)
 		assert.Contains(t, doc.errors[0].Message, "@InvalidName")
@@ -167,7 +172,7 @@ func TestDocument_parseDeclare(t *testing.T) {
 
 		declares := doc.parseDeclare(s)
 
-		require.Len(t, declares, 1)
+		require.Len(t, declares, 0)
 		assert.NotEmpty(t, doc.errors)
 		assert.Contains(t, doc.errors[0].Message, "type declared explicitly")
 	})
@@ -177,8 +182,9 @@ func TestDocument_parseDeclare(t *testing.T) {
 		s := NewScanner("test.sql", "@EnumTest int")
 		s.NextToken()
 
-		doc.parseDeclare(s)
+		declares := doc.parseDeclare(s)
 
+		require.Len(t, declares, 0)
 		assert.NotEmpty(t, doc.errors)
 		assert.Contains(t, doc.errors[0].Message, "needs to be assigned")
 	})
@@ -608,157 +614,3 @@ func TestDocument_PostgreSQL17_parseCreate(t *testing.T) {
 		assert.Equal(t, "function", create.CreateType)
 	})
 }
-
-// func TestDocument_PostgreSQL17_Types(t *testing.T) {
-// 	t.Run("parses composite type", func(t *testing.T) {
-// 		doc := &TSqlDocument{}
-// 		s := NewScanner("test.pgsql", "create type address_type as (street text, city text, zip varchar(10))")
-// 		s.NextToken()
-// 		s.NextNonWhitespaceCommentToken()
-
-// 		create := doc.parseCreate(s, 0)
-
-// 		assert.Equal(t, "type", create.CreateType)
-// 	})
-
-// 	t.Run("parses enum type", func(t *testing.T) {
-// 		doc := &TSqlDocument{}
-// 		s := NewScanner("test.pgsql", "create type mood as enum ('sad', 'ok', 'happy')")
-// 		s.NextToken()
-// 		s.NextNonWhitespaceCommentToken()
-
-// 		create := doc.parseCreate(s, 0)
-
-// 		assert.Equal(t, "type", create.CreateType)
-// 	})
-
-// 	t.Run("parses range type", func(t *testing.T) {
-// 		doc := &TSqlDocument{}
-// 		s := NewScanner("test.pgsql", "create type float_range as range (subtype = float8, subtype_diff = float8mi)")
-// 		s.NextToken()
-// 		s.NextNonWhitespaceCommentToken()
-
-// 		create := doc.parseCreate(s, 0)
-
-// 		assert.Equal(t, "type", create.CreateType)
-// 	})
-// }
-
-// func TestDocument_PostgreSQL17_Extensions(t *testing.T) {
-// 	t.Run("parses JSON functions PostgreSQL 17", func(t *testing.T) {
-// 		doc := &TSqlDocument{}
-// 		s := NewScanner("test.pgsql", "create function test() returns jsonb as $$ select json_serialize(data) from table1; $$ language sql")
-// 		s.NextToken()
-// 		s.NextNonWhitespaceCommentToken()
-
-// 		create := doc.parseCreate(s, 0)
-
-// 		assert.Equal(t, "function", create.CreateType)
-// 	})
-
-// 	t.Run("parses MERGE statement (PostgreSQL 15+)", func(t *testing.T) {
-// 		doc := &TSqlDocument{}
-// 		s := NewScanner("test.pgsql", "create function do_merge() returns void as $$ merge into target using source on target.id = source.id when matched then update set value = source.value; $$ language sql")
-// 		s.NextToken()
-// 		s.NextNonWhitespaceCommentToken()
-
-// 		create := doc.parseCreate(s, 0)
-
-// 		assert.Equal(t, "function", create.CreateType)
-// 	})
-// }
-
-// func TestDocument_PostgreSQL17_Identifiers(t *testing.T) {
-// 	t.Run("parses double-quoted identifiers", func(t *testing.T) {
-// 		doc := &TSqlDocument{}
-// 		s := NewScanner("test.pgsql", `create function "Test Func"() returns int as $$ begin return 1; end; $$ language plpgsql`)
-// 		s.NextToken()
-// 		s.NextNonWhitespaceCommentToken()
-
-// 		create := doc.parseCreate(s, 0)
-
-// 		assert.Contains(t, create.QuotedName.Value, "Test Func")
-// 	})
-
-// 	t.Run("parses case-sensitive identifiers", func(t *testing.T) {
-// 		doc := &TSqlDocument{}
-// 		s := NewScanner("test.pgsql", `create function "TestFunc"() returns int as $$ begin return 1; end; $$ language plpgsql`)
-// 		s.NextToken()
-// 		s.NextNonWhitespaceCommentToken()
-
-// 		create := doc.parseCreate(s, 0)
-
-// 		assert.Contains(t, create.QuotedName.Value, "TestFunc")
-// 	})
-// }
-
-// func TestDocument_PostgreSQL17_Datatypes(t *testing.T) {
-// 	t.Run("parses array types", func(t *testing.T) {
-// 		doc := &TSqlDocument{}
-// 		s := NewScanner("test.pgsql", "integer[]")
-// 		s.NextToken()
-
-// 		typ := doc.parseTypeExpression(s)
-
-// 		assert.Equal(t, "integer[]", typ.BaseType)
-// 	})
-
-// 	t.Run("parses serial types", func(t *testing.T) {
-// 		doc := &TSqlDocument{}
-// 		s := NewScanner("test.pgsql", "serial")
-// 		s.NextToken()
-
-// 		typ := doc.parseTypeExpression(s)
-
-// 		assert.Equal(t, "serial", typ.BaseType)
-// 	})
-
-// 	t.Run("parses text type", func(t *testing.T) {
-// 		doc := &TSqlDocument{}
-// 		s := NewScanner("test.pgsql", "text")
-// 		s.NextToken()
-
-// 		typ := doc.parseTypeExpression(s)
-
-// 		assert.Equal(t, "text", typ.BaseType)
-// 	})
-
-// 	t.Run("parses jsonb type", func(t *testing.T) {
-// 		doc := &TSqlDocument{}
-// 		s := NewScanner("test.pgsql", "jsonb")
-// 		s.NextToken()
-
-// 		typ := doc.parseTypeExpression(s)
-
-// 		assert.Equal(t, "jsonb", typ.BaseType)
-// 	})
-
-// 	t.Run("parses uuid type", func(t *testing.T) {
-// 		doc := &TSqlDocument{}
-// 		s := NewScanner("test.pgsql", "uuid")
-// 		s.NextToken()
-
-// 		typ := doc.parseTypeExpression(s)
-
-// 		assert.Equal(t, "uuid", typ.BaseType)
-// 	})
-// }
-
-// func TestDocument_PostgreSQL17_BatchSeparator(t *testing.T) {
-// 	t.Run("PostgreSQL uses semicolon not GO", func(t *testing.T) {
-// 		doc := &TSqlDocument{}
-// 		s := NewScanner("test.pgsql", "create function test1() returns int as $$ begin return 1; end; $$ language plpgsql; create function test2() returns int as $$ begin return 2; end; $$ language plpgsql;")
-// 		s.NextToken()
-// 		s.NextNonWhitespaceCommentToken()
-
-// 		create1 := doc.parseCreate(s, 0)
-// 		assert.Equal(t, "test1", create1.QuotedName.Value)
-
-// 		// Move to next statement
-// 		s.NextNonWhitespaceCommentToken()
-// 		s.NextNonWhitespaceCommentToken()
-
-// 		create2 := doc.parseCreate(s, 1)
-// 		assert.Equal(t, "test2", create2.QuotedName.Value)
-// 	})
-// }
