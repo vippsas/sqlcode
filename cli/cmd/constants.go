@@ -20,18 +20,18 @@ var (
 			if err != nil {
 				return err
 			}
-			if len(d.CodeBase.Creates) == 0 && len(d.CodeBase.Declares) == 0 {
+			if d.CodeBase.Empty() {
 				fmt.Println("No SQL code found in given paths")
 			}
-			if len(d.CodeBase.Errors) > 0 {
+			if d.CodeBase.HasErrors() {
 				fmt.Println("Errors:")
-				for _, e := range d.CodeBase.Errors {
+				for _, e := range d.CodeBase.Errors() {
 					fmt.Printf("%s:%d:%d: %s\n", e.Pos.File, e.Pos.Line, e.Pos.Line, e.Message)
 				}
 				return nil
 			}
 			fmt.Println("declare")
-			for i, c := range d.CodeBase.Declares {
+			for i, c := range d.CodeBase.Declares() {
 				var prefix string
 				if i == 0 {
 					prefix = "    "

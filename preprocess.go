@@ -16,10 +16,10 @@ import (
 
 func SchemaSuffixFromHash(doc sqlparser.Document) string {
 	hasher := sha256.New()
-	for _, dec := range doc.Declares {
+	for _, dec := range doc.Declares() {
 		hasher.Write([]byte(dec.String() + "\n"))
 	}
-	for _, c := range doc.Creates {
+	for _, c := range doc.Creates() {
 		if err := c.SerializeBytes(hasher); err != nil {
 			panic(err) // asserting that sha256 will never return a write error...
 		}
@@ -149,7 +149,7 @@ func Preprocess(doc sqlparser.Document, schemasuffix string, driver driver.Drive
 	}
 
 	declares := make(map[string]string)
-	for _, dec := range doc.Declares {
+	for _, dec := range doc.Declares() {
 		declares[dec.VariableName] = dec.Literal.RawValue
 	}
 
@@ -164,7 +164,7 @@ func Preprocess(doc sqlparser.Document, schemasuffix string, driver driver.Drive
 		target = fmt.Sprintf(`"code@%s"`, schemasuffix)
 	}
 
-	for _, create := range doc.Creates {
+	for _, create := range doc.Creates() {
 		if len(create.Body) == 0 {
 			continue
 		}
