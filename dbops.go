@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 
-	mssql "github.com/denisenkom/go-mssqldb"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
+	mssql "github.com/microsoft/go-mssqldb"
 )
 
 func Exists(ctx context.Context, dbc DB, schemasuffix string) (bool, error) {
@@ -33,8 +34,24 @@ func Drop(ctx context.Context, dbc DB, schemasuffix string) error {
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `sqlcode.DropCodeSchema`,
-		sql.Named("schemasuffix", schemasuffix))
+
+	var qs string
+	var arg = []interface{}{}
+	driver := dbc.Driver()
+
+	if _, ok := driver.(*mssql.Driver); ok {
+		qs = `sqlcode.DropCodeSchema`
+		arg = []interface{}{sql.Named("schemasuffix", schemasuffix)}
+	}
+
+	if _, ok := dbc.Driver().(*stdlib.Driver); ok {
+		qs = `call sqlcode.dropcodeschema(@schemasuffix)`
+		arg = []interface{}{
+			pgx.NamedArgs{"schemasuffix": schemasuffix},
+		}
+	}
+
+	_, err = tx.ExecContext(ctx, qs, arg...)
 	if err != nil {
 		_ = tx.Rollback()
 		return err
