@@ -17,7 +17,7 @@ services:
       - mssql
     environment:
       SQLSERVER_DSN: sqlserver://mssql:1433?database=master&user id=sa&password=VippsPw1
-      SQLSERVER_DRIVER: sqlserver
+      GODEBUG: "x509negativeserial=1"
     depends_on:
       mssql:
         condition: service_healthy

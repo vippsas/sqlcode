@@ -9,23 +9,23 @@ import (
 	"testing"
 	"time"
 
-	mssql "github.com/denisenkom/go-mssqldb"
-	"github.com/denisenkom/go-mssqldb/msdsn"
 	"github.com/gofrs/uuid"
 	_ "github.com/jackc/pgx/v5"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	mssql "github.com/microsoft/go-mssqldb"
+	"github.com/microsoft/go-mssqldb/msdsn"
 )
 
 type SqlDriverType int
 
 const (
-	SqlDriverDenisen SqlDriverType = iota
+	SqlDriverMssql SqlDriverType = iota
 	SqlDriverPgx
 )
 
 var sqlDrivers = map[SqlDriverType]string{
-	SqlDriverDenisen: "sqlserver",
-	SqlDriverPgx:     "pgx",
+	SqlDriverMssql: "sqlserver",
+	SqlDriverPgx:   "pgx",
 }
 
 type StdoutLogger struct {
@@ -49,7 +49,7 @@ type Fixture struct {
 }
 
 func (f *Fixture) IsSqlServer() bool {
-	return f.Driver == SqlDriverDenisen
+	return f.Driver == SqlDriverMssql
 }
 
 func (f *Fixture) IsPostgresql() bool {
@@ -89,7 +89,7 @@ func NewFixture() *Fixture {
 		// 32: Log transaction begin/end
 		dsn = dsn + "&log=63"
 		mssql.SetLogger(StdoutLogger{})
-		fixture.Driver = SqlDriverDenisen
+		fixture.Driver = SqlDriverMssql
 	}
 	if strings.Contains(dsn, "postgresql") {
 		fixture.Driver = SqlDriverPgx
@@ -123,7 +123,7 @@ func NewFixture() *Fixture {
 			panic(err)
 		}
 
-		pdsn, _, err := msdsn.Parse(dsn)
+		pdsn, err := msdsn.Parse(dsn)
 		if err != nil {
 			panic(err)
 		}
@@ -198,13 +198,21 @@ func (f *Fixture) RunMigrationFile(filename string) {
 }
 
 func (f *Fixture) RunIfPostgres(t *testing.T, name string, fn func(t *testing.T)) {
-	if f.IsPostgresql() {
-		t.Run(name, fn)
-	}
+	t.Run("pgsql", func(t *testing.T) {
+		if f.IsPostgresql() {
+			t.Run(name, fn)
+		} else {
+			t.Skip()
+		}
+	})
 }
 
 func (f *Fixture) RunIfMssql(t *testing.T, name string, fn func(t *testing.T)) {
-	if f.IsSqlServer() {
-		t.Run(name, fn)
-	}
+	t.Run("mssql", func(t *testing.T) {
+		if f.IsSqlServer() {
+			t.Run(name, fn)
+		} else {
+			t.Skip()
+		}
+	})
 }

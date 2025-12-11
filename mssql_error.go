@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	mssql "github.com/denisenkom/go-mssqldb"
+	mssql "github.com/microsoft/go-mssqldb"
 	"github.com/vippsas/sqlcode/sqlparser"
 )
 

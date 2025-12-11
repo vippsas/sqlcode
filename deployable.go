@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	mssql "github.com/denisenkom/go-mssqldb"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/stdlib"
 	pgxstdlib "github.com/jackc/pgx/v5/stdlib"
+	mssql "github.com/microsoft/go-mssqldb"
 	"github.com/vippsas/sqlcode/sqlparser"
 )
 

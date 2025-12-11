@@ -7,8 +7,8 @@ import (
 	"testing"
 	"testing/fstest"
 
-	mssql "github.com/denisenkom/go-mssqldb"
 	"github.com/jackc/pgx/v5/stdlib"
+	mssql "github.com/microsoft/go-mssqldb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
