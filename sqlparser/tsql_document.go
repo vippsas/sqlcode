@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/jackc/pgx/v5/stdlib"
 	mssql "github.com/microsoft/go-mssqldb"
 )
 
@@ -315,13 +314,7 @@ func (doc *TSqlDocument) ParseBatch(s *Scanner, isFirst bool) (hasMore bool) {
 			case "create":
 				// should be start of create procedure or create function...
 				c := doc.parseCreate(s, createCountInBatch)
-
-				if strings.HasSuffix(string(s.file), ".sql") {
-					c.Driver = &mssql.Driver{}
-				}
-				if strings.HasSuffix(string(s.file), ".pgsql") {
-					c.Driver = &stdlib.Driver{}
-				}
+				c.Driver = &mssql.Driver{}
 
 				// *prepend* what we saw before getting to the 'create'
 				createCountInBatch++
