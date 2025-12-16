@@ -110,81 +110,81 @@ func (doc *PGSqlDocument) parseBatch(s *Scanner, isFirst bool) (hasMore bool) {
 
 	return hasMore
 
-	var nodes []Unparsed
-	var docstring []PosString
-	newLineEncounteredInDocstring := false
+	// var nodes []Unparsed
+	// var docstring []PosString
+	// newLineEncounteredInDocstring := false
 
-	for {
-		tt := s.TokenType()
-		switch tt {
-		case EOFToken:
-			return false
-		case WhitespaceToken, MultilineCommentToken:
-			nodes = append(nodes, CreateUnparsed(s))
-			// do not reset docstring for a single trailing newline
-			t := s.Token()
-			if !newLineEncounteredInDocstring && (t == "\n" || t == "\r\n") {
-				newLineEncounteredInDocstring = true
-			} else {
-				docstring = nil
-			}
-			s.NextToken()
-		case SinglelineCommentToken:
-			// Build up a list of single line comments for the "docstring";
-			// it is reset whenever we encounter something else
-			docstring = append(docstring, PosString{s.Start(), s.Token()})
-			nodes = append(nodes, CreateUnparsed(s))
-			newLineEncounteredInDocstring = false
-			s.NextToken()
-		case ReservedWordToken:
-			switch s.ReservedWord() {
-			case "declare":
-				// PostgreSQL doesn't have top-level DECLARE batches like T-SQL
-				// DECLARE is only used inside function/procedure bodies
-				if isFirst {
-					doc.addError(s, "PostgreSQL 'declare' is used inside function bodies, not as top-level batch statements")
-				}
-				nodes = append(nodes, CreateUnparsed(s))
-				s.NextToken()
-				docstring = nil
-			case "create":
-				// Parse CREATE FUNCTION, CREATE PROCEDURE, CREATE TYPE, etc.
-				createStart := len(doc.creates)
-				c := doc.parseCreate(s, createStart)
-				c.Driver = &stdlib.Driver{}
+	// for {
+	// 	tt := s.TokenType()
+	// 	switch tt {
+	// 	case EOFToken:
+	// 		return false
+	// 	case WhitespaceToken, MultilineCommentToken:
+	// 		nodes = append(nodes, CreateUnparsed(s))
+	// 		// do not reset docstring for a single trailing newline
+	// 		t := s.Token()
+	// 		if !newLineEncounteredInDocstring && (t == "\n" || t == "\r\n") {
+	// 			newLineEncounteredInDocstring = true
+	// 		} else {
+	// 			docstring = nil
+	// 		}
+	// 		s.NextToken()
+	// 	case SinglelineCommentToken:
+	// 		// Build up a list of single line comments for the "docstring";
+	// 		// it is reset whenever we encounter something else
+	// 		docstring = append(docstring, PosString{s.Start(), s.Token()})
+	// 		nodes = append(nodes, CreateUnparsed(s))
+	// 		newLineEncounteredInDocstring = false
+	// 		s.NextToken()
+	// 	case ReservedWordToken:
+	// 		switch s.ReservedWord() {
+	// 		case "declare":
+	// 			// PostgreSQL doesn't have top-level DECLARE batches like T-SQL
+	// 			// DECLARE is only used inside function/procedure bodies
+	// 			if isFirst {
+	// 				doc.addError(s, "PostgreSQL 'declare' is used inside function bodies, not as top-level batch statements")
+	// 			}
+	// 			nodes = append(nodes, CreateUnparsed(s))
+	// 			s.NextToken()
+	// 			docstring = nil
+	// 		case "create":
+	// 			// Parse CREATE FUNCTION, CREATE PROCEDURE, CREATE TYPE, etc.
+	// 			createStart := len(doc.creates)
+	// 			c := doc.parseCreate(s, createStart)
+	// 			c.Driver = &stdlib.Driver{}
 
-				// Prepend any leading comments/whitespace
-				c.Body = append(nodes, c.Body...)
-				c.Docstring = docstring
-				doc.creates = append(doc.creates, c)
+	// 			// Prepend any leading comments/whitespace
+	// 			c.Body = append(nodes, c.Body...)
+	// 			c.Docstring = docstring
+	// 			doc.creates = append(doc.creates, c)
 
-				// Reset for next statement
-				nodes = nil
-				docstring = nil
-				newLineEncounteredInDocstring = false
-			default:
-				doc.addError(s, "Expected 'create', got: "+s.ReservedWord())
-				s.NextToken()
-				docstring = nil
-			}
-		case SemicolonToken:
-			// PostgreSQL uses semicolons as statement terminators
-			// Multiple CREATE statements can exist in same file
-			nodes = append(nodes, CreateUnparsed(s))
-			s.NextToken()
-			// Continue parsing - don't return like T-SQL does with GO
-		case BatchSeparatorToken:
-			// PostgreSQL doesn't use GO batch separators
-			// Q: Do we want to use GO batch separators as a feature of sqlcode?
-			doc.addError(s, "PostgreSQL does not use 'GO' batch separators; use semicolons instead")
-			s.NextToken()
-			docstring = nil
-		default:
-			doc.addError(s, fmt.Sprintf("Unexpected token in PostgreSQL document: %s", s.Token()))
-			s.NextToken()
-			docstring = nil
-		}
-	}
+	// 			// Reset for next statement
+	// 			nodes = nil
+	// 			docstring = nil
+	// 			newLineEncounteredInDocstring = false
+	// 		default:
+	// 			doc.addError(s, "Expected 'create', got: "+s.ReservedWord())
+	// 			s.NextToken()
+	// 			docstring = nil
+	// 		}
+	// 	case SemicolonToken:
+	// 		// PostgreSQL uses semicolons as statement terminators
+	// 		// Multiple CREATE statements can exist in same file
+	// 		nodes = append(nodes, CreateUnparsed(s))
+	// 		s.NextToken()
+	// 		// Continue parsing - don't return like T-SQL does with GO
+	// 	case BatchSeparatorToken:
+	// 		// PostgreSQL doesn't use GO batch separators
+	// 		// Q: Do we want to use GO batch separators as a feature of sqlcode?
+	// 		doc.addError(s, "PostgreSQL does not use 'GO' batch separators; use semicolons instead")
+	// 		s.NextToken()
+	// 		docstring = nil
+	// 	default:
+	// 		doc.addError(s, fmt.Sprintf("Unexpected token in PostgreSQL document: %s", s.Token()))
+	// 		s.NextToken()
+	// 		docstring = nil
+	// 	}
+	// }
 }
 
 // parseCreate parses PostgreSQL CREATE statements (FUNCTION, PROCEDURE, TYPE, etc.)
