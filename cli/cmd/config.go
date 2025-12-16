@@ -5,16 +5,17 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	mssql "github.com/denisenkom/go-mssqldb"
-	"github.com/denisenkom/go-mssqldb/azuread"
-	"golang.org/x/net/proxy"
 	"io/ioutil"
 	"os"
 	"path"
 	"strings"
 
-	_ "github.com/denisenkom/go-mssqldb/azuread"
-	"github.com/denisenkom/go-mssqldb/msdsn"
+	mssql "github.com/microsoft/go-mssqldb"
+	"github.com/microsoft/go-mssqldb/azuread"
+	"golang.org/x/net/proxy"
+
+	_ "github.com/microsoft/go-mssqldb/azuread"
+	"github.com/microsoft/go-mssqldb/msdsn"
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )

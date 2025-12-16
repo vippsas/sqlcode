@@ -2,20 +2,24 @@ package sqlcode
 
 import (
 	"crypto/sha256"
+	"database/sql/driver"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/vippsas/sqlcode/sqlparser"
+	"reflect"
 	"regexp"
 	"strings"
+
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/vippsas/sqlcode/sqlparser"
 )
 
 func SchemaSuffixFromHash(doc sqlparser.Document) string {
 	hasher := sha256.New()
-	for _, dec := range doc.Declares {
+	for _, dec := range doc.Declares() {
 		hasher.Write([]byte(dec.String() + "\n"))
 	}
-	for _, c := range doc.Creates {
+	for _, c := range doc.Creates() {
 		if err := c.SerializeBytes(hasher); err != nil {
 			panic(err) // asserting that sha256 will never return a write error...
 		}
@@ -128,7 +132,6 @@ func sqlcodeTransformCreate(declares map[string]string, c sqlparser.Create, quot
 				result.lineNumberCorrections = append(result.lineNumberCorrections, lineNumberCorrection{relativeLine, newlineCount})
 			}
 		}
-
 		if _, err = w.WriteString(token); err != nil {
 			return
 		}
@@ -138,7 +141,7 @@ func sqlcodeTransformCreate(declares map[string]string, c sqlparser.Create, quot
 	return
 }
 
-func Preprocess(doc sqlparser.Document, schemasuffix string) (PreprocessedFile, error) {
+func Preprocess(doc sqlparser.Document, schemasuffix string, driver driver.Driver) (PreprocessedFile, error) {
 	var result PreprocessedFile
 
 	if strings.Contains(schemasuffix, "]") {
@@ -146,17 +149,32 @@ func Preprocess(doc sqlparser.Document, schemasuffix string) (PreprocessedFile, 
 	}
 
 	declares := make(map[string]string)
-	for _, dec := range doc.Declares {
+	for _, dec := range doc.Declares() {
 		declares[dec.VariableName] = dec.Literal.RawValue
 	}
 
-	for _, create := range doc.Creates {
+	// The current sql driver that we are preparring for
+	currentDriver := reflect.TypeOf(driver)
+
+	// the default target for mssql
+	target := fmt.Sprintf(`[code@%s]`, schemasuffix)
+
+	// pgsql target
+	if _, ok := driver.(*stdlib.Driver); ok {
+		target = fmt.Sprintf(`"code@%s"`, schemasuffix)
+	}
+
+	for _, create := range doc.Creates() {
 		if len(create.Body) == 0 {
 			continue
 		}
-		batch, err := sqlcodeTransformCreate(declares, create, "[code@"+schemasuffix+"]")
+		if !currentDriver.AssignableTo(reflect.TypeOf(create.Driver)) {
+			// this batch is for a different sql driver
+			continue
+		}
+		batch, err := sqlcodeTransformCreate(declares, create, target)
 		if err != nil {
-			return result, err
+			return result, fmt.Errorf("failed to transform create: %w", err)
 		}
 		result.Batches = append(result.Batches, batch)
 	}
