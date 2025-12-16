@@ -5,21 +5,6 @@ import (
 	"strings"
 )
 
-type Unparsed struct {
-	Type        TokenType
-	Start, Stop Pos
-	RawValue    string
-}
-
-func (u Unparsed) WithoutPos() Unparsed {
-	return Unparsed{
-		Type:     u.Type,
-		Start:    Pos{},
-		Stop:     Pos{},
-		RawValue: u.RawValue,
-	}
-}
-
 type Declare struct {
 	Start        Pos
 	Stop         Pos
@@ -81,13 +66,4 @@ func (e Error) Error() string {
 
 func (e Error) WithoutPos() Error {
 	return Error{Message: e.Message}
-}
-
-func CreateUnparsed(s *Scanner) Unparsed {
-	return Unparsed{
-		Type:     s.TokenType(),
-		Start:    s.Start(),
-		Stop:     s.Stop(),
-		RawValue: s.Token(),
-	}
 }

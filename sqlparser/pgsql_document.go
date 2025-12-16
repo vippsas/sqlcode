@@ -6,6 +6,8 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 )
 
+var PGSQLStatementTokens = []string{"create"}
+
 type PGSqlDocument struct {
 	creates []Create
 	errors  []Error
@@ -84,6 +86,30 @@ func (d PGSqlDocument) WithoutPos() Document {
 //
 //	PostgreSQL uses schema.object notation rather than [schema].[object].
 func (doc *PGSqlDocument) parseBatch(s *Scanner, isFirst bool) (hasMore bool) {
+	nodes := &Nodes{
+		TokenHandlers: map[string]func(*Scanner, *Nodes) bool{
+			"create": func(s *Scanner, n *Nodes) bool {
+				// Parse CREATE FUNCTION, CREATE PROCEDURE, CREATE TYPE, etc.
+				c := doc.parseCreate(s, n.CreateStatements)
+				c.Driver = &stdlib.Driver{}
+
+				// Prepend any leading comments/whitespace
+				c.Body = append(n.Nodes, c.Body...)
+				c.Docstring = n.DocString
+				doc.creates = append(doc.creates, c)
+
+				return false
+			},
+		},
+	}
+
+	hasMore = nodes.Parse(s)
+	if nodes.HasErrors() {
+		doc.errors = append(doc.errors, nodes.Errors...)
+	}
+
+	return hasMore
+
 	var nodes []Unparsed
 	var docstring []PosString
 	newLineEncounteredInDocstring := false
@@ -177,13 +203,14 @@ func (doc *PGSqlDocument) parseBatch(s *Scanner, isFirst bool) (hasMore bool) {
 // We parse until we hit a semicolon or EOF, tracking dependencies on other objects.
 func (doc *PGSqlDocument) parseCreate(s *Scanner, createCountInBatch int) (result Create) {
 	var body []Unparsed
-	pos := s.Start()
 
 	// Copy the CREATE token
 	CopyToken(s, &body)
 	s.NextNonWhitespaceCommentToken()
 
 	// Check for OR REPLACE
+	// NOTE: "or replace" doesn't make sense within sqlcode as this will be created within a new
+	// schema.
 	if s.TokenType() == ReservedWordToken && s.ReservedWord() == "or" {
 		CopyToken(s, &body)
 		s.NextNonWhitespaceCommentToken()
@@ -193,7 +220,7 @@ func (doc *PGSqlDocument) parseCreate(s *Scanner, createCountInBatch int) (resul
 			s.NextNonWhitespaceCommentToken()
 		} else {
 			doc.addError(s, "Expected 'REPLACE' after 'OR'")
-			doc.recoverToNextStatementCopying(s, &body)
+			RecoverToNextStatementCopying(s, &body, PGSQLStatementTokens)
 			result.Body = body
 			return
 		}
@@ -202,7 +229,7 @@ func (doc *PGSqlDocument) parseCreate(s *Scanner, createCountInBatch int) (resul
 	// Parse the object type (FUNCTION, PROCEDURE, TYPE, etc.)
 	if s.TokenType() != ReservedWordToken {
 		doc.addError(s, "Expected object type after CREATE (e.g., FUNCTION, PROCEDURE, TYPE)")
-		doc.recoverToNextStatementCopying(s, &body)
+		RecoverToNextStatementCopying(s, &body, PGSQLStatementTokens)
 		result.Body = body
 		return
 	}
@@ -218,29 +245,23 @@ func (doc *PGSqlDocument) parseCreate(s *Scanner, createCountInBatch int) (resul
 		// Supported types
 	default:
 		doc.addError(s, fmt.Sprintf("Unsupported CREATE type for PostgreSQL: %s", createType))
-		doc.recoverToNextStatementCopying(s, &body)
+		RecoverToNextStatementCopying(s, &body, PGSQLStatementTokens)
 		result.Body = body
 		return
 	}
 
-	// Parse the object name (with optional schema qualification)
-	// objectName := doc.parseQualifiedName(s, &body)
-	// if objectName == "" {
-	// 	doc.addError(s, "Expected object name after CREATE "+createType)
-	// 	doc.recoverToNextStatementCopying(s, &body)
-	// 	result.Body = body
-	// 	return
-	// }
-
-	// result.QuotedName = PosString{pos, objectName}
-
-	// Insist on [code].
+	// Insist on [code] to provide the ability for sqlcode to patch function bodies
+	// with references to other sqlcode objects.
 	if s.TokenType() != QuotedIdentifierToken || s.Token() != "[code]" {
 		doc.addError(s, fmt.Sprintf("create %s must be followed by [code].", result.CreateType))
-		doc.recoverToNextStatementCopying(s, &result.Body)
+		RecoverToNextStatementCopying(s, &result.Body, PGSQLStatementTokens)
 		return
 	}
-	result.QuotedName = doc.parseCodeschemaName(s, &result.Body)
+	var err error
+	result.QuotedName, err = ParseCodeschemaName(s, &result.Body, PGSQLStatementTokens)
+	if err != nil {
+		doc.addError(s, err.Error())
+	}
 	if result.QuotedName.String() == "" {
 		return
 	}
@@ -510,24 +531,6 @@ func (doc *PGSqlDocument) extractObjectName(identifier string) string {
 	return identifier
 }
 
-// recoverToNextStatementCopying recovers from parse errors by skipping to next statement
-func (doc *PGSqlDocument) recoverToNextStatementCopying(s *Scanner, target *[]Unparsed) {
-	for {
-		NextTokenCopyingWhitespace(s, target)
-		switch s.TokenType() {
-		case ReservedWordToken:
-			switch s.ReservedWord() {
-			case "create", "drop", "alter":
-				return
-			}
-		case EOFToken, SemicolonToken:
-			return
-		default:
-			CopyToken(s, target)
-		}
-	}
-}
-
 func (doc *PGSqlDocument) addError(s *Scanner, err string) {
 	doc.errors = append(doc.errors, Error{
 		s.Start(), err,
@@ -538,7 +541,7 @@ func (doc *PGSqlDocument) parseDeclareBatch(s *Scanner) (hasMore bool) {
 	// PostgreSQL doesn't have top-level DECLARE batches like T-SQL
 	// DECLARE is only used inside function/procedure bodies (in BEGIN...END blocks)
 	doc.addError(s, "PostgreSQL does not support top-level DECLARE statements outside of function bodies")
-	doc.recoverToNextStatement(s)
+	RecoverToNextStatement(s, PGSQLStatementTokens)
 	return false
 }
 
@@ -546,22 +549,4 @@ func (doc *PGSqlDocument) parseBatchSeparator(s *Scanner) {
 	// PostgreSQL doesn't use GO batch separators
 	doc.addError(s, "PostgreSQL does not use 'GO' batch separators; use semicolons")
 	s.NextToken()
-}
-
-func (doc *PGSqlDocument) recoverToNextStatement(s *Scanner) {
-	// We hit an unexpected token ... as an heuristic for continuing parsing,
-	// skip parsing until we hit a reserved word that starts a statement
-	// we recognize
-	for {
-		s.NextNonWhitespaceCommentToken()
-		switch s.TokenType() {
-		case ReservedWordToken:
-			switch s.ReservedWord() {
-			case "create", "drop", "alter":
-				return
-			}
-		case EOFToken, SemicolonToken:
-			return
-		}
-	}
 }

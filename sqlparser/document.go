@@ -1,7 +1,9 @@
 package sqlparser
 
 import (
+	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -39,5 +41,95 @@ func NewDocumentFromExtension(extension string) Document {
 		return &PGSqlDocument{}
 	default:
 		panic("unhandled document type: " + extension)
+	}
+}
+
+// parseCodeschemaName parses `[code] . something`, and returns `something`
+// in quoted form (`[something]`). Also copy to `target`. Empty string on error.
+// Note: To follow conventions, consume one extra token at the end even if we know
+// it fill not be consumed by this function...
+func ParseCodeschemaName(s *Scanner, target *[]Unparsed, statementTokens []string) (PosString, error) {
+	CopyToken(s, target)
+	NextTokenCopyingWhitespace(s, target)
+	if s.TokenType() != DotToken {
+		RecoverToNextStatementCopying(s, target, statementTokens)
+		return PosString{Value: ""}, fmt.Errorf("[code] must be followed by '.'")
+	}
+
+	CopyToken(s, target)
+
+	NextTokenCopyingWhitespace(s, target)
+	switch s.TokenType() {
+	case UnquotedIdentifierToken:
+		// To get something uniform for comparison, quote all names
+		CopyToken(s, target)
+		result := PosString{Pos: s.Start(), Value: "[" + s.Token() + "]"}
+		NextTokenCopyingWhitespace(s, target)
+		return result, nil
+	case QuotedIdentifierToken:
+		CopyToken(s, target)
+		result := PosString{Pos: s.Start(), Value: s.Token()}
+		NextTokenCopyingWhitespace(s, target)
+		return result, nil
+	default:
+		RecoverToNextStatementCopying(s, target, statementTokens)
+		return PosString{Value: ""}, fmt.Errorf("[code]. must be followed an identifier")
+	}
+}
+
+// NextTokenCopyingWhitespace is like s.NextToken(), but if whitespace is encountered
+// it is simply copied into `target`. Upon return, the scanner is located at a non-whitespace
+// token, and target is either unmodified or filled with some whitespace nodes.
+func NextTokenCopyingWhitespace(s *Scanner, target *[]Unparsed) {
+	for {
+		tt := s.NextToken()
+		switch tt {
+		case EOFToken, BatchSeparatorToken:
+			// do not copy
+			return
+		case WhitespaceToken, MultilineCommentToken, SinglelineCommentToken:
+			// copy, and loop around
+			CopyToken(s, target)
+			continue
+		default:
+			return
+		}
+	}
+
+}
+
+func RecoverToNextStatementCopying(s *Scanner, target *[]Unparsed, StatementTokens []string) {
+	// We hit an unexpected token ... as an heuristic for continuing parsing,
+	// skip parsing until we hit a reserved word that starts a statement
+	// we recognize
+	for {
+		NextTokenCopyingWhitespace(s, target)
+		switch s.TokenType() {
+		case ReservedWordToken:
+			if slices.Contains(StatementTokens, s.ReservedWord()) {
+				return
+			}
+		case EOFToken:
+			return
+		default:
+			CopyToken(s, target)
+		}
+	}
+}
+
+func RecoverToNextStatement(s *Scanner, StatementTokens []string) {
+	// We hit an unexpected token ... as an heuristic for continuing parsing,
+	// skip parsing until we hit a reserved word that starts a statement
+	// we recognize
+	for {
+		s.NextNonWhitespaceCommentToken()
+		switch s.TokenType() {
+		case ReservedWordToken:
+			if slices.Contains(StatementTokens, s.ReservedWord()) {
+				return
+			}
+		case EOFToken:
+			return
+		}
 	}
 }
