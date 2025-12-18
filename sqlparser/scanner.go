@@ -1,6 +1,7 @@
 package sqlparser
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"unicode"
@@ -221,7 +222,9 @@ func (s *Scanner) nextToken() TokenType {
 			return VariableIdentifierToken
 		} else {
 			rw := strings.ToLower(s.Token())
-			if _, ok := reservedWords[rw]; ok {
+			_, ok := reservedWords[rw]
+			fmt.Printf("%#v %t\n", rw, ok)
+			if ok {
 				s.reservedWord = rw
 				return ReservedWordToken
 			} else {
@@ -243,7 +246,10 @@ func (s *Scanner) nextToken() TokenType {
 		// no, it is instead an identifier starting with N...
 		s.scanIdentifier()
 		rw := strings.ToLower(s.Token())
-		if _, ok := reservedWords[rw]; ok {
+		_, ok := reservedWords[rw]
+		fmt.Printf("%#v %t\n", rw, ok)
+
+		if ok {
 			s.reservedWord = rw
 			return ReservedWordToken
 		} else {
@@ -380,6 +386,7 @@ func (s *Scanner) scanWhitespace() TokenType {
 	return WhitespaceToken
 }
 
+// tsql (mssql) reservered words
 var reservedWords = map[string]struct{}{
 	"add":                            struct{}{},
 	"external":                       struct{}{},
@@ -565,8 +572,6 @@ var reservedWords = map[string]struct{}{
 	"writetext":                      struct{}{},
 	"exit":                           struct{}{},
 	"proc":                           struct{}{},
-	// pgsql
-	"replace": struct{}{},
 }
 
 // apparently 'within group' is also reserved but dropping that..

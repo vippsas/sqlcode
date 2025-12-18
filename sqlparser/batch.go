@@ -4,25 +4,25 @@ import (
 	"fmt"
 )
 
-type Nodes struct {
+type Batch struct {
 	Nodes               []Unparsed
 	DocString           []PosString
 	CreateStatements    int
-	TokenHandlers       map[string]func(*Scanner, *Nodes) bool
+	TokenHandlers       map[string]func(*Scanner, *Batch) bool
 	Errors              []Error
 	BatchSeparatorToken TokenType
 }
 
-func (n *Nodes) Create(s *Scanner) {
+func (n *Batch) Create(s *Scanner) {
 	n.Nodes = append(n.Nodes, CreateUnparsed(s))
 }
 
-func (n *Nodes) HasErrors() bool {
+func (n *Batch) HasErrors() bool {
 	return len(n.Errors) > 0
 }
 
 // Agnostic parser that handles comments, whitespace, and reserved words
-func (n *Nodes) Parse(s *Scanner) bool {
+func (n *Batch) Parse(s *Scanner) bool {
 	newLineEncounteredInDocstring := false
 
 	for {

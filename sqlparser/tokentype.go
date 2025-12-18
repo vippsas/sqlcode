@@ -38,6 +38,10 @@ const (
 	UnexpectedCharacterToken
 	NonUTF8ErrorToken
 
+	// PGSQL specific
+	DollarQuotedStringStartToken
+	DollarQuotedStringEndToken
+
 	BatchSeparatorToken
 	MalformedBatchSeparatorToken
 	EOFToken
@@ -89,6 +93,9 @@ var tokenToDescription = map[TokenType]string{
 	DoubleQuoteErrorToken:                  "DoubleQuoteErrorToken",
 	UnexpectedCharacterToken:               "UnexpectedCharacterToken",
 	NonUTF8ErrorToken:                      "NonUTF8ErrorToken",
+
+	DollarQuotedStringStartToken: "DollarQuotedStringEndToken",
+	DollarQuotedStringEndToken:   "DollarQuotedStringEndToken",
 
 	// After a lot of back and forth we added the batch separater to the scanner.
 	// We implement sqlcmd's use of the go

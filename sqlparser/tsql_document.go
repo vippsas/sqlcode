@@ -221,6 +221,7 @@ func (doc *TSqlDocument) parseBatchSeparator(s *Scanner) {
 	// just saw a 'go'; just make sure there's nothing bad trailing it
 	// (if there is, convert to errors and move on until the line is consumed
 	errorEmitted := false
+	// continuously process tokens until a non-whitespace, non-malformed token is encountered.
 	for {
 		switch s.NextToken() {
 		case WhitespaceToken:
@@ -264,9 +265,9 @@ func (doc *TSqlDocument) parseDeclareBatch(s *Scanner) (hasMore bool) {
 }
 
 func (doc *TSqlDocument) parseBatch(s *Scanner, isFirst bool) (hasMore bool) {
-	nodes := &Nodes{
-		TokenHandlers: map[string]func(*Scanner, *Nodes) bool{
-			"declare": func(s *Scanner, n *Nodes) bool {
+	batch := &Batch{
+		TokenHandlers: map[string]func(*Scanner, *Batch) bool{
+			"declare": func(s *Scanner, n *Batch) bool {
 				// First declare-statement; enter a mode where we assume all contents
 				// of batch are declare statements
 				if !isFirst {
@@ -276,7 +277,7 @@ func (doc *TSqlDocument) parseBatch(s *Scanner, isFirst bool) (hasMore bool) {
 				// regardless of errors, go on and parse as far as we get...
 				return doc.parseDeclareBatch(s)
 			},
-			"create": func(s *Scanner, n *Nodes) bool {
+			"create": func(s *Scanner, n *Batch) bool {
 				// should be start of create procedure or create function...
 				c := doc.parseCreate(s, n.CreateStatements)
 				c.Driver = &mssql.Driver{}
@@ -290,9 +291,9 @@ func (doc *TSqlDocument) parseBatch(s *Scanner, isFirst bool) (hasMore bool) {
 			},
 		},
 	}
-	hasMore = nodes.Parse(s)
-	if nodes.HasErrors() {
-		doc.errors = append(doc.errors, nodes.Errors...)
+	hasMore = batch.Parse(s)
+	if batch.HasErrors() {
+		doc.errors = append(doc.errors, batch.Errors...)
 	}
 
 	return hasMore
