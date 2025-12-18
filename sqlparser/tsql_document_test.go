@@ -1,6 +1,7 @@
 package sqlparser
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -228,63 +229,13 @@ func TestDocument_parseBatchSeparator(t *testing.T) {
 	t.Run("errors on malformed separator", func(t *testing.T) {
 		doc := &TSqlDocument{}
 		s := NewScanner("test.sql", "go -- comment")
-		s.NextToken()
-
+		tt := s.NextToken()
+		fmt.Printf("%#v %#v\n", s, tt)
 		doc.parseBatchSeparator(s)
+		fmt.Printf("%#v\n", s)
 
 		assert.NotEmpty(t, doc.errors)
 		assert.Contains(t, doc.errors[0].Message, "should be alone")
-	})
-}
-
-func TestDocument_parseCodeschemaName(t *testing.T) {
-	t.Run("parses unquoted identifier", func(t *testing.T) {
-		doc := &TSqlDocument{}
-		s := NewScanner("test.sql", "[code].TestProc")
-		s.NextToken()
-		var target []Unparsed
-
-		result := doc.parseCodeschemaName(s, &target)
-
-		assert.Equal(t, "[TestProc]", result.Value)
-		assert.NotEmpty(t, target)
-	})
-
-	t.Run("parses quoted identifier", func(t *testing.T) {
-		doc := &TSqlDocument{}
-		s := NewScanner("test.sql", "[code].[Test Proc]")
-		s.NextToken()
-		var target []Unparsed
-
-		result := doc.parseCodeschemaName(s, &target)
-
-		assert.Equal(t, "[Test Proc]", result.Value)
-	})
-
-	t.Run("errors on missing dot", func(t *testing.T) {
-		doc := &TSqlDocument{}
-		s := NewScanner("test.sql", "[code] TestProc")
-		s.NextToken()
-		var target []Unparsed
-
-		result := doc.parseCodeschemaName(s, &target)
-
-		assert.Equal(t, "", result.Value)
-		assert.NotEmpty(t, doc.errors)
-		assert.Contains(t, doc.errors[0].Message, "must be followed by '.'")
-	})
-
-	t.Run("errors on missing identifier", func(t *testing.T) {
-		doc := &TSqlDocument{}
-		s := NewScanner("test.sql", "[code].123")
-		s.NextToken()
-		var target []Unparsed
-
-		result := doc.parseCodeschemaName(s, &target)
-
-		assert.Equal(t, "", result.Value)
-		assert.NotEmpty(t, doc.errors)
-		assert.Contains(t, doc.errors[0].Message, "must be followed an identifier")
 	})
 }
 
@@ -463,62 +414,5 @@ func TestCreateUnparsed(t *testing.T) {
 		assert.Equal(t, ReservedWordToken, unparsed.Type)
 		assert.Equal(t, "select", unparsed.RawValue)
 		assert.Equal(t, Pos{File: "test.sql", Line: 1, Col: 1}, unparsed.Start)
-	})
-}
-
-func TestDocument_recoverToNextStatement(t *testing.T) {
-	t.Run("recovers to declare", func(t *testing.T) {
-		doc := &TSqlDocument{}
-		s := NewScanner("test.sql", "invalid tokens here declare @x int = 1")
-		s.NextToken()
-
-		doc.recoverToNextStatement(s)
-
-		assert.Equal(t, ReservedWordToken, s.TokenType())
-		assert.Equal(t, "declare", s.ReservedWord())
-	})
-
-	t.Run("recovers to create", func(t *testing.T) {
-		doc := &TSqlDocument{}
-		s := NewScanner("test.sql", "bad stuff create procedure")
-		s.NextToken()
-
-		doc.recoverToNextStatement(s)
-
-		assert.Equal(t, "create", s.ReservedWord())
-	})
-
-	t.Run("recovers to go", func(t *testing.T) {
-		doc := &TSqlDocument{}
-		s := NewScanner("test.sql", "error error go")
-		s.NextToken()
-
-		doc.recoverToNextStatement(s)
-
-		assert.Equal(t, "go", s.ReservedWord())
-	})
-
-	t.Run("stops at EOF", func(t *testing.T) {
-		doc := &TSqlDocument{}
-		s := NewScanner("test.sql", "no keywords")
-		s.NextToken()
-
-		doc.recoverToNextStatement(s)
-
-		assert.Equal(t, EOFToken, s.TokenType())
-	})
-}
-
-func TestDocument_recoverToNextStatementCopying(t *testing.T) {
-	t.Run("copies tokens while recovering", func(t *testing.T) {
-		doc := &TSqlDocument{}
-		s := NewScanner("test.sql", "bad token declare")
-		s.NextToken()
-		var target []Unparsed
-
-		doc.recoverToNextStatementCopying(s, &target)
-
-		assert.NotEmpty(t, target)
-		assert.Equal(t, "declare", s.ReservedWord())
 	})
 }

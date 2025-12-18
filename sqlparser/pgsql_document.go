@@ -86,9 +86,9 @@ func (d PGSqlDocument) WithoutPos() Document {
 //
 //	PostgreSQL uses schema.object notation rather than [schema].[object].
 func (doc *PGSqlDocument) parseBatch(s *Scanner, isFirst bool) (hasMore bool) {
-	nodes := &Nodes{
-		TokenHandlers: map[string]func(*Scanner, *Nodes) bool{
-			"create": func(s *Scanner, n *Nodes) bool {
+	batch := &Batch{
+		TokenHandlers: map[string]func(*Scanner, *Batch) bool{
+			"create": func(s *Scanner, n *Batch) bool {
 				// Parse CREATE FUNCTION, CREATE PROCEDURE, CREATE TYPE, etc.
 				c := doc.parseCreate(s, n.CreateStatements)
 				c.Driver = &stdlib.Driver{}
@@ -103,9 +103,9 @@ func (doc *PGSqlDocument) parseBatch(s *Scanner, isFirst bool) (hasMore bool) {
 		},
 	}
 
-	hasMore = nodes.Parse(s)
-	if nodes.HasErrors() {
-		doc.errors = append(doc.errors, nodes.Errors...)
+	hasMore = batch.Parse(s)
+	if batch.HasErrors() {
+		doc.errors = append(doc.errors, batch.Errors...)
 	}
 
 	return hasMore
