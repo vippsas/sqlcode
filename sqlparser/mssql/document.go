@@ -283,6 +283,26 @@ func (doc *TSqlDocument) parseDeclareBatch(s sqldocument.Scanner) (hasMore bool)
 // which affects whether DECLARE statements are allowed.
 func (doc *TSqlDocument) parseBatch(s sqldocument.Scanner, isFirst bool) (hasMore bool) {
 	batch := &sqldocument.Batch{
+		BatchSeparatorHandler: func(s sqldocument.Scanner, b *sqldocument.Batch) {
+			errorEmitted := false
+			for {
+				switch s.NextToken() {
+				case sqldocument.WhitespaceToken:
+					continue
+				case sqldocument.MalformedBatchSeparatorToken:
+					if !errorEmitted {
+						b.Errors = append(b.Errors, sqldocument.Error{
+							Pos:     s.Start(),
+							Message: "`go` should be alone on a line without any comments",
+						})
+						errorEmitted = true
+					}
+					continue
+				default:
+					return
+				}
+			}
+		},
 		TokenHandlers: map[string]func(sqldocument.Scanner, *sqldocument.Batch) bool{
 			"declare": func(s sqldocument.Scanner, n *sqldocument.Batch) bool {
 				// First declare-statement; enter a mode where we assume all contents
@@ -308,7 +328,7 @@ func (doc *TSqlDocument) parseBatch(s sqldocument.Scanner, isFirst bool) (hasMor
 				// fmt.Printf("%#v\n", s)
 				// fmt.Printf("%#v\n", n)
 				// fmt.Printf("%#v\n", doc)
-				return false
+				return true
 			},
 		},
 	}
