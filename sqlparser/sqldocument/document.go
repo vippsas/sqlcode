@@ -1,54 +1,44 @@
-package sqlparser
+package sqldocument
 
 import (
 	"fmt"
-	"path/filepath"
 	"slices"
-	"strings"
 )
 
-// Document represents a parsed SQL document, containing
-// declarations, create statements, pragmas, and errors.
+// Document represents a SQL document that needs to be parsed.
+// It will contain declarations, create statements, pragmas, and errors.
 // It provides methods to access and manipulate these components
-// for T-SQL and PostgreSQL
+// for supported database drivers
 type Document interface {
+	// Parse parses the input SQL document and populates the Document structure.
+	Parse(input []byte, file FileRef) error
+	// Returns true if the document contains no create statements or declarations
 	Empty() bool
+	// Returns true if the document contains any parsing errors
 	HasErrors() bool
-
+	// Returns the list of create statements in the document
 	Creates() []Create
+	// Returns the list of variable declarations in the document
 	Declares() []Declare
+	// Returns the list of parsing errors in the document
 	Errors() []Error
+	// Returns the list of pragma include-if statements in the document
 	PragmaIncludeIf() []string
+	// Includes the content of another Document into this one
 	Include(other Document)
+	// Performs a topological sort of the create statements based on their dependencies
 	Sort()
-	Parse(s *Scanner) error
-	WithoutPos() Document
 }
 
-// Helper function to parse a SQL document from a string input
-func ParseString(filename FileRef, input string) (result Document) {
-	result = NewDocumentFromExtension(filepath.Ext(strings.ToLower(string(filename))))
-	Parse(&Scanner{input: input, file: filename}, result)
-	return
-}
-
-// Based on the input file extension, create the appropriate Document type
-func NewDocumentFromExtension(extension string) Document {
-	switch extension {
-	case ".sql":
-		return &TSqlDocument{}
-	case ".pgsql":
-		return &PGSqlDocument{}
-	default:
-		panic("unhandled document type: " + extension)
-	}
+func CopyToken(s Scanner, target *[]Unparsed) {
+	*target = append(*target, CreateUnparsed(s))
 }
 
 // parseCodeschemaName parses `[code] . something`, and returns `something`
 // in quoted form (`[something]`). Also copy to `target`. Empty string on error.
 // Note: To follow conventions, consume one extra token at the end even if we know
 // it fill not be consumed by this function...
-func ParseCodeschemaName(s *Scanner, target *[]Unparsed, statementTokens []string) (PosString, error) {
+func ParseCodeschemaName(s Scanner, target *[]Unparsed, statementTokens []string) (PosString, error) {
 	CopyToken(s, target)
 	NextTokenCopyingWhitespace(s, target)
 	if s.TokenType() != DotToken {
@@ -80,7 +70,7 @@ func ParseCodeschemaName(s *Scanner, target *[]Unparsed, statementTokens []strin
 // NextTokenCopyingWhitespace is like s.NextToken(), but if whitespace is encountered
 // it is simply copied into `target`. Upon return, the scanner is located at a non-whitespace
 // token, and target is either unmodified or filled with some whitespace nodes.
-func NextTokenCopyingWhitespace(s *Scanner, target *[]Unparsed) {
+func NextTokenCopyingWhitespace(s Scanner, target *[]Unparsed) {
 	for {
 		tt := s.NextToken()
 		switch tt {
@@ -98,7 +88,7 @@ func NextTokenCopyingWhitespace(s *Scanner, target *[]Unparsed) {
 
 }
 
-func RecoverToNextStatementCopying(s *Scanner, target *[]Unparsed, StatementTokens []string) {
+func RecoverToNextStatementCopying(s Scanner, target *[]Unparsed, StatementTokens []string) {
 	// We hit an unexpected token ... as an heuristic for continuing parsing,
 	// skip parsing until we hit a reserved word that starts a statement
 	// we recognize
@@ -117,7 +107,7 @@ func RecoverToNextStatementCopying(s *Scanner, target *[]Unparsed, StatementToke
 	}
 }
 
-func RecoverToNextStatement(s *Scanner, StatementTokens []string) {
+func RecoverToNextStatement(s Scanner, StatementTokens []string) {
 	// We hit an unexpected token ... as an heuristic for continuing parsing,
 	// skip parsing until we hit a reserved word that starts a statement
 	// we recognize

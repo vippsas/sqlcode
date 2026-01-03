@@ -1,4 +1,4 @@
-package sqlparser
+package sqldocument
 
 import (
 	"database/sql/driver"
@@ -75,19 +75,6 @@ func (c Create) String() string {
 		panic(err)
 	}
 	return buf.String()
-}
-
-func (c Create) WithoutPos() Create {
-	var body []Unparsed
-	for _, x := range c.Body {
-		body = append(body, x.WithoutPos())
-	}
-	return Create{
-		CreateType: c.CreateType,
-		QuotedName: c.QuotedName,
-		DependsOn:  c.DependsOn,
-		Body:       body,
-	}
 }
 
 func (c Create) DependsOnStrings() (result []string) {
