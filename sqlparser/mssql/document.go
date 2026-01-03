@@ -1,4 +1,4 @@
-package sqlparser
+package mssql
 
 import (
 	"fmt"
@@ -6,36 +6,50 @@ import (
 	"strings"
 
 	mssql "github.com/microsoft/go-mssqldb"
+	"github.com/vippsas/sqlcode/sqlparser/sqldocument"
 )
 
+// TSQLStatementTokens defines the keywords that start new statements.
+// Used by error recovery to find a safe point to resume parsing.
 var TSQLStatementTokens = []string{"create", "declare", "go"}
 
+// TSqlDocument represents a T-SQL source file.
+//
+// The document contains:
+//   - creates: CREATE PROCEDURE/FUNCTION/TYPE statements with dependency info
+//   - declares: DECLARE statements for sqlcode constants (@Enum*, @Global*, @Const*)
+//   - errors: Syntax and semantic errors encountered during parsing
+//   - pragmaIncludeIf: Conditional compilation directives from --sqlcode:include-if
+//
+// Parsing follows T-SQL batch semantics where batches are separated by GO.
+// The first batch may contain DECLARE statements for constants.
+// Subsequent batches contain CREATE statements for database objects.
 type TSqlDocument struct {
 	pragmaIncludeIf []string
-	creates         []Create
-	declares        []Declare
-	errors          []Error
+	creates         []sqldocument.Create
+	declares        []sqldocument.Declare
+	errors          []sqldocument.Error
 
-	Pragma
+	sqldocument.Pragma
 }
 
-func (d TSqlDocument) HasErrors() bool {
-	return len(d.errors) > 0
-}
+// Parse processes a T-SQL source file from the given input.
+//
+// Parsing proceeds in phases:
+//  1. Parse pragma comments at the file start (--sqlcode:...)
+//  2. Parse batches sequentially, separated by GO
+//
+// The first batch has special rules: it may contain DECLARE statements
+// for sqlcode constants. CREATE statements may appear in any batch,
+// but procedures/functions must be alone in their batch (T-SQL requirement).
+//
+// Errors are accumulated in the document rather than stopping parsing,
+// allowing partial results even with syntax errors.
+func (d *TSqlDocument) Parse(input []byte, file sqldocument.FileRef) error {
+	s := &Scanner{}
+	s.SetInput(input)
+	s.SetFile(file)
 
-func (d TSqlDocument) Creates() []Create {
-	return d.creates
-}
-
-func (d TSqlDocument) Declares() []Declare {
-	return d.declares
-}
-
-func (d TSqlDocument) Errors() []Error {
-	return d.errors
-}
-
-func (d *TSqlDocument) Parse(s *Scanner) error {
 	err := d.ParsePragmas(s)
 	if err != nil {
 		d.addError(s, err.Error())
@@ -49,13 +63,29 @@ func (d *TSqlDocument) Parse(s *Scanner) error {
 	return nil
 }
 
+func (d TSqlDocument) HasErrors() bool {
+	return len(d.errors) > 0
+}
+
+func (d TSqlDocument) Creates() []sqldocument.Create {
+	return d.creates
+}
+
+func (d TSqlDocument) Declares() []sqldocument.Declare {
+	return d.declares
+}
+
+func (d TSqlDocument) Errors() []sqldocument.Error {
+	return d.errors
+}
+
 func (d *TSqlDocument) Sort() {
 	// Do the topological sort; and include any error with it as part
 	// of `result`, *not* return it as err
-	sortedCreates, errpos, sortErr := TopologicalSort(d.creates)
+	sortedCreates, errpos, sortErr := sqldocument.TopologicalSort(d.creates)
 
 	if sortErr != nil {
-		d.errors = append(d.errors, Error{
+		d.errors = append(d.errors, sqldocument.Error{
 			Pos:     errpos,
 			Message: sortErr.Error(),
 		})
@@ -64,29 +94,7 @@ func (d *TSqlDocument) Sort() {
 	}
 }
 
-// Transform a TSqlDocument to remove all Position information; this is used
-// to 'unclutter' a DOM to more easily write assertions on it.
-func (d TSqlDocument) WithoutPos() Document {
-	var cs []Create
-	for _, x := range d.creates {
-		cs = append(cs, x.WithoutPos())
-	}
-	var ds []Declare
-	for _, x := range d.declares {
-		ds = append(ds, x.WithoutPos())
-	}
-	var es []Error
-	for _, x := range d.errors {
-		es = append(es, x.WithoutPos())
-	}
-	return &TSqlDocument{
-		creates:  cs,
-		declares: ds,
-		errors:   es,
-	}
-}
-
-func (d *TSqlDocument) Include(other Document) {
+func (d *TSqlDocument) Include(other sqldocument.Document) {
 	// Do not copy pragmaIncludeIf, since that is local to a single file.
 	// Its contents is also present in each Create.
 	d.declares = append(d.declares, other.Declares()...)
@@ -98,67 +106,67 @@ func (d TSqlDocument) Empty() bool {
 	return len(d.creates) == 0 || len(d.declares) == 0
 }
 
-func (d *TSqlDocument) addError(s *Scanner, msg string) {
-	d.errors = append(d.errors, Error{
+func (d *TSqlDocument) addError(s sqldocument.Scanner, msg string) {
+	d.errors = append(d.errors, sqldocument.Error{
 		Pos:     s.Start(),
 		Message: msg,
 	})
 }
 
-func (d *TSqlDocument) unexpectedTokenError(s *Scanner) {
+func (d *TSqlDocument) unexpectedTokenError(s sqldocument.Scanner) {
 	d.addError(s, "Unexpected: "+s.Token())
 }
 
-func (doc *TSqlDocument) parseTypeExpression(s *Scanner) (t Type) {
+func (doc *TSqlDocument) parseTypeExpression(s sqldocument.Scanner) (t sqldocument.Type) {
 	parseArgs := func() {
 		// parses *after* the initial (; consumes trailing )
 		for {
 			switch {
-			case s.TokenType() == NumberToken:
+			case s.TokenType() == sqldocument.NumberToken:
 				t.Args = append(t.Args, s.Token())
-			case s.TokenType() == UnquotedIdentifierToken && s.TokenLower() == "max":
+			case s.TokenType() == sqldocument.UnquotedIdentifierToken && s.TokenLower() == "max":
 				t.Args = append(t.Args, "max")
 			default:
 				doc.unexpectedTokenError(s)
-				RecoverToNextStatement(s, TSQLStatementTokens)
+				sqldocument.RecoverToNextStatement(s, TSQLStatementTokens)
 				return
 			}
 			s.NextNonWhitespaceCommentToken()
 			switch {
-			case s.TokenType() == CommaToken:
+			case s.TokenType() == sqldocument.CommaToken:
 				s.NextNonWhitespaceCommentToken()
 				continue
-			case s.TokenType() == RightParenToken:
+			case s.TokenType() == sqldocument.RightParenToken:
 				s.NextNonWhitespaceCommentToken()
 				return
 			default:
 				doc.unexpectedTokenError(s)
-				RecoverToNextStatement(s, TSQLStatementTokens)
+				sqldocument.RecoverToNextStatement(s, TSQLStatementTokens)
 				return
 			}
 		}
 	}
 
-	if s.TokenType() != UnquotedIdentifierToken {
+	if s.TokenType() != sqldocument.UnquotedIdentifierToken {
 		panic("assertion failed, bug in caller")
 	}
 	t.BaseType = s.Token()
 	s.NextNonWhitespaceCommentToken()
-	if s.TokenType() == LeftParenToken {
+	if s.TokenType() == sqldocument.LeftParenToken {
 		s.NextNonWhitespaceCommentToken()
 		parseArgs()
 	}
 	return
 }
 
-func (doc *TSqlDocument) parseDeclare(s *Scanner) (result []Declare) {
+func (doc *TSqlDocument) parseDeclare(s sqldocument.Scanner) (result []sqldocument.Declare) {
 	declareStart := s.Start()
 	// parse what is *after* the `declare` reserved keyword
 loop:
 	for {
-		if s.TokenType() != VariableIdentifierToken {
+		if s.TokenType() != sqldocument.VariableIdentifierToken {
 			doc.unexpectedTokenError(s)
-			RecoverToNextStatement(s, TSQLStatementTokens)
+			sqldocument.RecoverToNextStatement(s, TSQLStatementTokens)
 			return
 		}
 
@@ -170,41 +178,41 @@ loop:
 		}
 
 		s.NextNonWhitespaceCommentToken()
-		var variableType Type
+		var variableType sqldocument.Type
 		switch s.TokenType() {
-		case EqualToken:
+		case sqldocument.EqualToken:
 			doc.addError(s, "sqlcode constants needs a type declared explicitly")
 			s.NextNonWhitespaceCommentToken()
-		case UnquotedIdentifierToken:
+		case sqldocument.UnquotedIdentifierToken:
 			variableType = doc.parseTypeExpression(s)
 		}
 
-		if s.TokenType() != EqualToken {
+		if s.TokenType() != sqldocument.EqualToken {
 			doc.addError(s, "sqlcode constants needs to be assigned at once using =")
-			RecoverToNextStatement(s, TSQLStatementTokens)
+			sqldocument.RecoverToNextStatement(s, TSQLStatementTokens)
 		}
 
 		switch s.NextNonWhitespaceCommentToken() {
-		case NumberToken, NVarcharLiteralToken, VarcharLiteralToken:
-			declare := Declare{
+		case sqldocument.NumberToken, NVarcharLiteralToken, VarcharLiteralToken:
+			declare := sqldocument.Declare{
 				Start:        declareStart,
 				Stop:         s.Stop(),
 				VariableName: variableName,
 				Datatype:     variableType,
-				Literal:      CreateUnparsed(s),
+				Literal:      sqldocument.CreateUnparsed(s),
 			}
 			result = append(result, declare)
 		default:
 			doc.unexpectedTokenError(s)
-			RecoverToNextStatement(s, TSQLStatementTokens)
+			sqldocument.RecoverToNextStatement(s, TSQLStatementTokens)
 			return
 		}
 
 		switch s.NextNonWhitespaceCommentToken() {
-		case CommaToken:
+		case sqldocument.CommaToken:
 			s.NextNonWhitespaceCommentToken()
 			continue
-		case SemicolonToken:
+		case sqldocument.SemicolonToken:
 			s.NextNonWhitespaceCommentToken()
 			break loop
 		default:
@@ -217,16 +225,16 @@ loop:
 	return
 }
 
-func (doc *TSqlDocument) parseBatchSeparator(s *Scanner) {
+func (doc *TSqlDocument) parseBatchSeparator(s sqldocument.Scanner) {
 	// just saw a 'go'; just make sure there's nothing bad trailing it
 	// (if there is, convert to errors and move on until the line is consumed
 	errorEmitted := false
 	// continuously process tokens until a non-whitespace, non-malformed token is encountered.
 	for {
 		switch s.NextToken() {
-		case WhitespaceToken:
+		case sqldocument.WhitespaceToken:
 			continue
-		case MalformedBatchSeparatorToken:
+		case sqldocument.MalformedBatchSeparatorToken:
 			if !errorEmitted {
 				doc.addError(s, "`go` should be alone on a line without any comments")
 				errorEmitted = true
@@ -238,36 +246,45 @@ func (doc *TSqlDocument) parseBatchSeparator(s *Scanner) {
 	}
 }
 
-func (doc *TSqlDocument) parseDeclareBatch(s *Scanner) (hasMore bool) {
+func (doc *TSqlDocument) parseDeclareBatch(s sqldocument.Scanner) (hasMore bool) {
 	if s.ReservedWord() != "declare" {
 		panic("assertion failed, incorrect use in caller")
 	}
 	for {
 		tt := s.TokenType()
 		switch {
-		case tt == EOFToken:
+		case tt == sqldocument.EOFToken:
 			return false
-		case tt == ReservedWordToken && s.ReservedWord() == "declare":
+		case tt == sqldocument.ReservedWordToken && s.ReservedWord() == "declare":
 			s.NextNonWhitespaceCommentToken()
 			d := doc.parseDeclare(s)
 			doc.declares = append(doc.declares, d...)
-		case tt == ReservedWordToken && s.ReservedWord() != "declare":
+		case tt == sqldocument.ReservedWordToken && s.ReservedWord() != "declare":
 			doc.addError(s, "Only 'declare' allowed in this batch")
-			RecoverToNextStatement(s, TSQLStatementTokens)
-		case tt == BatchSeparatorToken:
+			sqldocument.RecoverToNextStatement(s, TSQLStatementTokens)
+		case tt == sqldocument.BatchSeparatorToken:
 			doc.parseBatchSeparator(s)
 			return true
 		default:
 			doc.unexpectedTokenError(s)
-			RecoverToNextStatement(s, TSQLStatementTokens)
+			sqldocument.RecoverToNextStatement(s, TSQLStatementTokens)
 		}
 	}
 }
 
-func (doc *TSqlDocument) parseBatch(s *Scanner, isFirst bool) (hasMore bool) {
-	batch := &Batch{
-		TokenHandlers: map[string]func(*Scanner, *Batch) bool{
-			"declare": func(s *Scanner, n *Batch) bool {
+// parseBatch processes a single T-SQL batch (content between GO separators).
+//
+// Batch processing strategy:
+//   - Track tokens before the first significant statement for docstrings
+//   - Dispatch to specialized parsers based on statement type (CREATE, DECLARE)
+//   - Handle batch separator (GO) to signal batch boundary
+//
+// The isFirst parameter indicates whether this is the first batch in the file,
+// which affects whether DECLARE statements are allowed.
+func (doc *TSqlDocument) parseBatch(s sqldocument.Scanner, isFirst bool) (hasMore bool) {
+	batch := &sqldocument.Batch{
+		TokenHandlers: map[string]func(sqldocument.Scanner, *sqldocument.Batch) bool{
+			"declare": func(s sqldocument.Scanner, n *sqldocument.Batch) bool {
 				// First declare-statement; enter a mode where we assume all contents
 				// of batch are declare statements
 				if !isFirst {
@@ -277,7 +294,7 @@ func (doc *TSqlDocument) parseBatch(s *Scanner, isFirst bool) (hasMore bool) {
 				// regardless of errors, go on and parse as far as we get...
 				return doc.parseDeclareBatch(s)
 			},
-			"create": func(s *Scanner, n *Batch) bool {
+			"create": func(s sqldocument.Scanner, n *sqldocument.Batch) bool {
 				// should be start of create procedure or create function...
 				c := doc.parseCreate(s, n.CreateStatements)
 				c.Driver = &mssql.Driver{}
@@ -287,6 +304,10 @@ func (doc *TSqlDocument) parseBatch(s *Scanner, isFirst bool) (hasMore bool) {
 				c.Body = append(n.Nodes, c.Body...)
 				c.Docstring = n.DocString
 				doc.creates = append(doc.creates, c)
+
+				// fmt.Printf("%#v\n", s)
+				// fmt.Printf("%#v\n", n)
+				// fmt.Printf("%#v\n", doc)
 				return false
 			},
 		},
@@ -299,48 +320,55 @@ func (doc *TSqlDocument) parseBatch(s *Scanner, isFirst bool) (hasMore bool) {
 	return hasMore
 }
 
-// parseCreate parses anything that starts with "create". Position is
-// *on* the create token.
-// At this stage in sqlcode parser development we're only interested
-// in procedures/functions/types as opaque blocks of SQL code where
-// we only track dependencies between them and their declared name;
-// so we treat them with the same code. We consume until the end of
-// the batch; only one declaration allowed per batch. Everything
-// parsed here will also be added to `batch`. On any error, copying
-// to batch stops / becomes erratic..
-func (d *TSqlDocument) parseCreate(s *Scanner, createCountInBatch int) (result Create) {
+// parseCreate parses CREATE PROCEDURE/FUNCTION/TYPE statements.
+//
+// This is the core of the sqlcode parser. It:
+//  1. Validates the CREATE type is one we support (procedure/function/type)
+//  2. Extracts the object name from [code].ObjectName syntax
+//  3. Copies the entire statement body for later emission
+//  4. Tracks dependencies by finding [code].OtherObject references
+//
+// The parser is intentionally permissive about T-SQL syntax details,
+// delegating full validation to SQL Server. It focuses on extracting
+// the structural information needed for dependency ordering and code generation.
+//
+// Parameters:
+//   - s: Scanner positioned on the CREATE keyword
+//   - createCountInBatch: Number of CREATE statements already seen in this batch
+//     (used to enforce "one procedure/function per batch" rule)
+func (d *TSqlDocument) parseCreate(s sqldocument.Scanner, createCountInBatch int) (result sqldocument.Create) {
 	if s.ReservedWord() != "create" {
 		panic("illegal use by caller")
 	}
-	CopyToken(s, &result.Body)
+	sqldocument.CopyToken(s, &result.Body)
 
-	NextTokenCopyingWhitespace(s, &result.Body)
+	sqldocument.NextTokenCopyingWhitespace(s, &result.Body)
 
 	createType := strings.ToLower(s.Token())
 	if !(createType == "procedure" || createType == "function" || createType == "type") {
 		d.addError(s, fmt.Sprintf("sqlcode only supports creating procedures, functions or types; not `%s`", createType))
-		RecoverToNextStatementCopying(s, &result.Body, TSQLStatementTokens)
+		sqldocument.RecoverToNextStatementCopying(s, &result.Body, TSQLStatementTokens)
 		return
 	}
 	if (createType == "procedure" || createType == "function") && createCountInBatch > 0 {
 		d.addError(s, "a procedure/function must be alone in a batch; use 'go' to split batches")
-		RecoverToNextStatementCopying(s, &result.Body, TSQLStatementTokens)
+		sqldocument.RecoverToNextStatementCopying(s, &result.Body, TSQLStatementTokens)
 		return
 	}
 
 	result.CreateType = createType
-	CopyToken(s, &result.Body)
+	sqldocument.CopyToken(s, &result.Body)
 
-	NextTokenCopyingWhitespace(s, &result.Body)
+	sqldocument.NextTokenCopyingWhitespace(s, &result.Body)
 
 	// Insist on [code].
-	if s.TokenType() != QuotedIdentifierToken || s.Token() != "[code]" {
+	if s.TokenType() != sqldocument.QuotedIdentifierToken || s.Token() != "[code]" {
 		d.addError(s, fmt.Sprintf("create %s must be followed by [code].", result.CreateType))
-		RecoverToNextStatementCopying(s, &result.Body, TSQLStatementTokens)
+		sqldocument.RecoverToNextStatementCopying(s, &result.Body, TSQLStatementTokens)
 		return
 	}
 	var err error
-	result.QuotedName, err = ParseCodeschemaName(s, &result.Body, TSQLStatementTokens)
+	result.QuotedName, err = sqldocument.ParseCodeschemaName(s, &result.Body, TSQLStatementTokens)
 	if err != nil {
 		d.addError(s, err.Error())
 	}
@@ -358,7 +386,7 @@ tailloop:
 	for {
 		tt := s.TokenType()
 		switch {
-		case tt == ReservedWordToken && s.ReservedWord() == "create":
+		case tt == sqldocument.ReservedWordToken && s.ReservedWord() == "create":
 			// So, we're currently parsing 'create ...' and we see another 'create'.
 			// We split in two cases depending on the context we are currently in
 			// (createType is referring to how we entered this function, *NOT* the
@@ -371,13 +399,13 @@ tailloop:
 				//
 				// What is important is a function/procedure/type isn't started on without a 'go'
 				// in between; so we block those 3 from appearing in the same batch
-				CopyToken(s, &result.Body)
-				NextTokenCopyingWhitespace(s, &result.Body)
+				sqldocument.CopyToken(s, &result.Body)
+				sqldocument.NextTokenCopyingWhitespace(s, &result.Body)
 				tt2 := s.TokenType()
 
-				if (tt2 == ReservedWordToken && (s.ReservedWord() == "function" || s.ReservedWord() == "procedure")) ||
-					(tt2 == UnquotedIdentifierToken && s.TokenLower() == "type") {
-					RecoverToNextStatementCopying(s, &result.Body, TSQLStatementTokens)
+				if (tt2 == sqldocument.ReservedWordToken && (s.ReservedWord() == "function" || s.ReservedWord() == "procedure")) ||
+					(tt2 == sqldocument.UnquotedIdentifierToken && s.TokenLower() == "type") {
+					sqldocument.RecoverToNextStatementCopying(s, &result.Body, TSQLStatementTokens)
 					d.addError(s, "a procedure/function must be alone in a batch; use 'go' to split batches")
 					return
 				}
@@ -390,11 +418,11 @@ tailloop:
 				panic("assertion failed")
 			}
 
-		case tt == EOFToken || tt == BatchSeparatorToken:
+		case tt == sqldocument.EOFToken || tt == sqldocument.BatchSeparatorToken:
 			break tailloop
-		case tt == QuotedIdentifierToken && s.Token() == "[code]":
+		case tt == sqldocument.QuotedIdentifierToken && s.Token() == "[code]":
 			// Parse a dependency
-			dep, err := ParseCodeschemaName(s, &result.Body, TSQLStatementTokens)
+			dep, err := sqldocument.ParseCodeschemaName(s, &result.Body, TSQLStatementTokens)
 			if err != nil {
 				d.addError(s, err.Error())
 			}
@@ -408,9 +436,9 @@ tailloop:
 			if !found {
 				result.DependsOn = append(result.DependsOn, dep)
 			}
-		case tt == ReservedWordToken && s.Token() == "as":
-			CopyToken(s, &result.Body)
-			NextTokenCopyingWhitespace(s, &result.Body)
+		case tt == sqldocument.ReservedWordToken && s.Token() == "as":
+			sqldocument.CopyToken(s, &result.Body)
+			sqldocument.NextTokenCopyingWhitespace(s, &result.Body)
 			/*
 					    TODO: Fix and re-enable
 						This code add RoutineName for convenience.  So:
@@ -448,8 +476,8 @@ tailloop:
 			*/
 
 		default:
-			CopyToken(s, &result.Body)
-			NextTokenCopyingWhitespace(s, &result.Body)
+			sqldocument.CopyToken(s, &result.Body)
+			sqldocument.NextTokenCopyingWhitespace(s, &result.Body)
 		}
 	}
 

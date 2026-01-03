@@ -1,4 +1,4 @@
-package sqlparser
+package sqldocument
 
 import (
 	"fmt"
@@ -22,14 +22,15 @@ func (d Declare) String() string {
 		d.Literal.RawValue)
 }
 
-func (d Declare) WithoutPos() Declare {
-	return Declare{
-		Start:        Pos{},
-		Stop:         Pos{},
-		VariableName: d.VariableName,
-		Datatype:     d.Datatype,
-		Literal:      d.Literal.WithoutPos(),
-	}
+// FileRef is a dedicated type for file references, allowing future refactoring
+// of how files are identified without changing the API.
+type FileRef string
+
+// Pos represents a position in a source file with line and column numbers.
+// Line and column are 1-indexed for human-readable error messages.
+type Pos struct {
+	File      FileRef
+	Line, Col int
 }
 
 // A string that has a Pos-ition in a source document

@@ -13,60 +13,27 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/vippsas/sqlcode/sqlparser/mssql"
+	"github.com/vippsas/sqlcode/sqlparser/sqldocument"
 )
 
-var templateRoutineName string = "\ndeclare @RoutineName nvarchar(128)\nset @RoutineName = '%s'\n"
+var (
+	templateRoutineName    string   = "\ndeclare @RoutineName nvarchar(128)\nset @RoutineName = '%s'\n"
+	supportedSqlExtensions []string = []string{".sql", ".pgsql"}
+	// consider something a "sqlcode source file" if it contains [code]
+	// or a --sqlcode: header
+	isSqlCodeRegex = regexp.MustCompile(`^--sqlcode:|\[code\]`)
+)
 
-var supportedSqlExtensions []string = []string{".sql", ".pgsql"}
-
-func CopyToken(s *Scanner, target *[]Unparsed) {
-	*target = append(*target, CreateUnparsed(s))
-}
-
-// AdvanceAndCopy is like NextToken; advance to next token that is not whitespace and return
-// Note: The 'go' and EOF tokens are *not* copied
-func AdvanceAndCopy(s *Scanner, target *[]Unparsed) {
-	for {
-		tt := s.NextToken()
-		switch tt {
-		case EOFToken, BatchSeparatorToken:
-			// do not copy
-			return
-		case WhitespaceToken, MultilineCommentToken, SinglelineCommentToken:
-			// copy, and loop around
-			CopyToken(s, target)
-			continue
-		default:
-			// copy, and return
-			CopyToken(s, target)
-			return
-		}
+// Based on the input file extension, create the appropriate Document type
+func NewDocumentFromExtension(extension string) sqldocument.Document {
+	switch extension {
+	case ".sql":
+		return &mssql.TSqlDocument{}
+	default:
+		panic("unhandled document type: " + extension)
 	}
-}
-
-func Parse(s *Scanner, result Document) {
-	// Top-level parse; this focuses on splitting into "batches" separated
-	// by 'go'.
-
-	// CONVENTION:
-	// All functions should expect `s` positioned on what they are documented
-	// to consume/parse.
-	//
-	// Functions typically consume *after* the keyword that triggered their
-	// invoication; e.g. parseCreate parses from first non-whitespace-token
-	// *after* `create`.
-	//
-	// On return, `s` is positioned at the token that starts the next statement/
-	// sub-expression. In particular trailing ';' and whitespace has been consumed.
-	//
-	// `s` will typically never be positioned on whitespace except in
-	// whitespace-preserving parsing
-	s.NextNonWhitespaceToken()
-	err := result.Parse(s)
-	if err != nil {
-		panic(fmt.Sprintf("failed to parse document: %s: %e", s.file, err))
-	}
-	return
 }
 
 // ParseFileystems iterates through a list of filesystems and parses all supported
@@ -76,7 +43,7 @@ func Parse(s *Scanner, result Document) {
 // related to parsing/sorting will be in result.Errors.
 //
 // ParseFilesystems will also sort create statements topologically.
-func ParseFilesystems(fslst []fs.FS, includeTags []string) (filenames []string, result Document, err error) {
+func ParseFilesystems(fslst []fs.FS, includeTags []string) (filenames []string, result sqldocument.Document, err error) {
 	// We are being passed several *filesystems* here. It may be easy to pass in the same
 	// directory twice but that should not be encouraged, so if we get the same hash from
 	// two files, return an error. Only files containing [code] in some way will be
@@ -123,8 +90,12 @@ func ParseFilesystems(fslst []fs.FS, includeTags []string) (filenames []string, 
 					hashes[hash] = pathDesc
 
 					fdoc := NewDocumentFromExtension(extension)
-					Parse(&Scanner{input: string(buf), file: FileRef(path)}, fdoc)
+					err = fdoc.Parse(buf, sqldocument.FileRef(path))
+					if err != nil {
+						return fmt.Errorf("error parsing file %s: %w", pathDesc, err)
+					}
 
+					// only include if include tags match
 					if matchesIncludeTags(fdoc.PragmaIncludeIf(), includeTags) {
 						filenames = append(filenames, pathDesc)
 						result.Include(fdoc)
@@ -166,7 +137,3 @@ func IsSqlcodeConstVariable(varname string) bool {
 		strings.HasPrefix(varname, "@CONST_") ||
 		strings.HasPrefix(varname, "@const_")
 }
-
-// consider something a "sqlcode source file" if it contains [code]
-// or a --sqlcode: header
-var isSqlCodeRegex = regexp.MustCompile(`^--sqlcode:|\[code\]`)

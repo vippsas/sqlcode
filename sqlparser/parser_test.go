@@ -13,21 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPostgresqlCreate(t *testing.T) {
-	doc := ParseString("test.pgsql", `
-create procedure [code].test()
-language plpgsql
-as $$
-begin
-    perform 1;
-end;
-$$;
-	`)
-
-	require.Len(t, doc.Creates(), 1)
-	require.Equal(t, &stdlib.Driver{}, doc.Creates()[0].Driver)
-}
-
 func TestParserSmokeTest(t *testing.T) {
 	doc := ParseString("test.sql", `
 /* test is a test

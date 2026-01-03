@@ -1,4 +1,4 @@
-package sqlparser
+package sqldocument
 
 import (
 	"fmt"
@@ -13,7 +13,7 @@ func (d Pragma) PragmaIncludeIf() []string {
 	return d.pragmas
 }
 
-func (d *Pragma) parseSinglePragma(s *Scanner) error {
+func (d *Pragma) parseSinglePragma(s Scanner) error {
 	pragma := strings.TrimSpace(strings.TrimPrefix(s.Token(), "--sqlcode:"))
 	if pragma == "" {
 		return nil
@@ -28,7 +28,7 @@ func (d *Pragma) parseSinglePragma(s *Scanner) error {
 	return nil
 }
 
-func (d *Pragma) ParsePragmas(s *Scanner) error {
+func (d *Pragma) ParsePragmas(s Scanner) error {
 	for s.TokenType() == PragmaToken {
 		err := d.parseSinglePragma(s)
 		if err != nil {

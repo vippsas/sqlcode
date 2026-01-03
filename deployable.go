@@ -15,12 +15,13 @@ import (
 	pgxstdlib "github.com/jackc/pgx/v5/stdlib"
 	mssql "github.com/microsoft/go-mssqldb"
 	"github.com/vippsas/sqlcode/sqlparser"
+	"github.com/vippsas/sqlcode/sqlparser/sqldocument"
 )
 
 type Deployable struct {
 	SchemaSuffix string
 	ParsedFiles  []string // mainly for use in error messages etc
-	CodeBase     sqlparser.Document
+	CodeBase     sqldocument.Document
 
 	// cache over whether it has been uploaded to a given DB
 	// (the same physical DB can be in this map multiple times under

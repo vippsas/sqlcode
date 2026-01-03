@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	mssql "github.com/microsoft/go-mssqldb"
-	"github.com/vippsas/sqlcode/sqlparser"
+	"github.com/vippsas/sqlcode/sqlparser/sqldocument"
 )
 
 type MSSQLUserError struct {
@@ -33,7 +33,7 @@ func (s MSSQLUserError) Error() string {
 }
 
 type SQLCodeParseErrors struct {
-	Errors []sqlparser.Error
+	Errors []sqldocument.Error
 }
 
 func (e SQLCodeParseErrors) Error() string {

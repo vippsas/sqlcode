@@ -12,9 +12,10 @@ import (
 
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/vippsas/sqlcode/sqlparser"
+	"github.com/vippsas/sqlcode/sqlparser/sqldocument"
 )
 
-func SchemaSuffixFromHash(doc sqlparser.Document) string {
+func SchemaSuffixFromHash(doc sqldocument.Document) string {
 	hasher := sha256.New()
 	for _, dec := range doc.Declares() {
 		hasher.Write([]byte(dec.String() + "\n"))
@@ -45,7 +46,7 @@ type lineNumberCorrection struct {
 }
 
 type Batch struct {
-	StartPos sqlparser.Pos
+	StartPos sqldocument.Pos
 	Lines    string
 
 	// lineNumberCorrections contains data that helps us map from errors in the `Lines`
@@ -90,7 +91,7 @@ type PreprocessedFile struct {
 }
 
 type PreprocessorError struct {
-	Pos     sqlparser.Pos
+	Pos     sqldocument.Pos
 	Message string
 }
 
@@ -100,7 +101,7 @@ func (p PreprocessorError) Error() string {
 
 var codeSchemaRegexp = regexp.MustCompile(`(?i)\[code\]`)
 
-func sqlcodeTransformCreate(declares map[string]string, c sqlparser.Create, quotedTargetSchema string) (result Batch, err error) {
+func sqlcodeTransformCreate(declares map[string]string, c sqldocument.Create, quotedTargetSchema string) (result Batch, err error) {
 	var w strings.Builder
 
 	if len(c.Body) > 0 {
@@ -117,9 +118,9 @@ func sqlcodeTransformCreate(declares map[string]string, c sqlparser.Create, quot
 	for _, u := range c.Body {
 		token := u.RawValue
 		switch {
-		case u.Type == sqlparser.QuotedIdentifierToken && u.RawValue == "[code]":
+		case u.Type == sqldocument.QuotedIdentifierToken && u.RawValue == "[code]":
 			token = quotedTargetSchema
-		case u.Type == sqlparser.VariableIdentifierToken && sqlparser.IsSqlcodeConstVariable(u.RawValue):
+		case u.Type == sqldocument.VariableIdentifierToken && sqlparser.IsSqlcodeConstVariable(u.RawValue):
 			constLiteral, ok := declares[u.RawValue]
 			if !ok {
 				err = PreprocessorError{u.Start, fmt.Sprintf("sqlcode constant `%s` not declared", u.RawValue)}
@@ -141,7 +142,7 @@ func sqlcodeTransformCreate(declares map[string]string, c sqlparser.Create, quot
 	return
 }
 
-func Preprocess(doc sqlparser.Document, schemasuffix string, driver driver.Driver) (PreprocessedFile, error) {
+func Preprocess(doc sqldocument.Document, schemasuffix string, driver driver.Driver) (PreprocessedFile, error) {
 	var result PreprocessedFile
 
 	if strings.Contains(schemasuffix, "]") {
