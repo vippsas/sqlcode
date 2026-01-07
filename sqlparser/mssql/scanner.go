@@ -45,7 +45,7 @@ type Scanner struct {
 	reservedWord string // Lowercase version of token if it's a reserved word, empty otherwise
 }
 
-// NewScanner creates a new Scanner for the given source file and input string.
+// NewScanner creates a new Scanner for the given T-SQL source file and input string.
 // The scanner is positioned before the first token; call NextToken() to advance.
 func NewScanner(path sqldocument.FileRef, input string) *Scanner {
 	return &Scanner{input: input, file: path}

@@ -4,12 +4,19 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jackc/pgx/v5/stdlib"
 	mssql "github.com/microsoft/go-mssqldb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vippsas/sqlcode/sqlparser"
+	mssql17 "github.com/vippsas/sqlcode/sqlparser/mssql"
+	"github.com/vippsas/sqlcode/sqlparser/sqldocument"
 )
+
+func ParseString(t *testing.T, file, input string) *mssql17.TSqlDocument {
+	d := &mssql17.TSqlDocument{}
+	assert.NoError(t, d.Parse([]byte(input), sqldocument.FileRef(file)))
+	return d
+}
 
 func TestLineNumberInInput(t *testing.T) {
 
@@ -64,7 +71,7 @@ func TestSchemaSuffixFromHash(t *testing.T) {
 	})
 
 	t.Run("returns consistent hash", func(t *testing.T) {
-		doc := sqlparser.ParseString("test.sql", `
+		doc := ParseString(t, "test.sql", `
 declare @EnumFoo int = 1;
 go
 create procedure [code].Test as begin end
@@ -78,12 +85,12 @@ create procedure [code].Test as begin end
 	})
 
 	t.Run("different content yields different hash", func(t *testing.T) {
-		doc1 := sqlparser.ParseString("test.sql", `
+		doc1 := ParseString(t, "test.sql", `
 declare @EnumFoo int = 1;
 go
 create procedure [code].Test1 as begin end
 `)
-		doc2 := sqlparser.ParseString("test.sql", `
+		doc2 := ParseString(t, "test.sql", `
 declare @EnumFoo int = 2;
 go
 create procedure [code].Test2 as begin end
@@ -93,12 +100,6 @@ create procedure [code].Test2 as begin end
 		suffix2 := SchemaSuffixFromHash(doc2)
 
 		assert.NotEqual(t, suffix1, suffix2)
-	})
-
-	t.Run("empty document has hash", func(t *testing.T) {
-		doc := sqlparser.NewDocumentFromExtension(".pgsql")
-		suffix := SchemaSuffixFromHash(doc)
-		assert.Len(t, suffix, 12)
 	})
 }
 
@@ -110,7 +111,7 @@ func TestSchemaName(t *testing.T) {
 func TestBatchLineNumberInInput(t *testing.T) {
 	t.Run("no corrections", func(t *testing.T) {
 		b := Batch{
-			StartPos: sqlparser.Pos{Line: 10, Col: 1},
+			StartPos: sqldocument.Pos{Line: 10, Col: 1},
 			Lines:    "line1\nline2\nline3",
 		}
 
@@ -121,7 +122,7 @@ func TestBatchLineNumberInInput(t *testing.T) {
 
 	t.Run("with corrections", func(t *testing.T) {
 		b := Batch{
-			StartPos: sqlparser.Pos{Line: 10, Col: 1},
+			StartPos: sqldocument.Pos{Line: 10, Col: 1},
 			Lines:    "line1\nline2\nextra1\nextra2\nline3",
 			lineNumberCorrections: []lineNumberCorrection{
 				{inputLineNumber: 2, extraLinesInOutput: 2}, // line 2 became 3 lines
@@ -184,7 +185,7 @@ func TestBatchRelativeLineNumberInInput(t *testing.T) {
 
 func TestPreprocess(t *testing.T) {
 	t.Run("basic procedure with schema replacement", func(t *testing.T) {
-		doc := sqlparser.ParseString("test.sql", `
+		doc := ParseString(t, "test.sql", `
 create procedure [code].Test as
 begin
     select 1
@@ -199,24 +200,8 @@ end
 		assert.NotContains(t, result.Batches[0].Lines, "[code].")
 	})
 
-	t.Run("postgres uses unquoted schema name", func(t *testing.T) {
-		doc := sqlparser.ParseString("test.pgsql", `
-create procedure [code].test() as $$
-begin
-    perform 1;
-end;
-$$ language plpgsql;
-`)
-		result, err := Preprocess(doc, "abc123", &stdlib.Driver{})
-		require.NoError(t, err)
-		require.Len(t, result.Batches, 1)
-
-		assert.Contains(t, result.Batches[0].Lines, `"code@abc123".`)
-		assert.NotContains(t, result.Batches[0].Lines, "[code@abc123].")
-	})
-
 	t.Run("replaces enum constants", func(t *testing.T) {
-		doc := sqlparser.ParseString("test.sql", `
+		doc := ParseString(t, "test.sql", `
 declare @EnumStatus int = 42;
 go
 create procedure [code].Test as
@@ -234,7 +219,7 @@ end
 	})
 
 	t.Run("handles multiline string constants", func(t *testing.T) {
-		doc := sqlparser.ParseString("test.sql", `
+		doc := ParseString(t, "test.sql", `
 declare @EnumMulti nvarchar(max) = N'line1
 line2
 line3';
@@ -256,7 +241,7 @@ end
 	})
 
 	t.Run("error on undeclared constant", func(t *testing.T) {
-		doc := sqlparser.ParseString("test.sql", `
+		doc := ParseString(t, "test.sql", `
 create procedure [code].Test as
 begin
     select @EnumUndeclared
@@ -272,7 +257,7 @@ end
 	})
 
 	t.Run("error on schema suffix with bracket", func(t *testing.T) {
-		doc := sqlparser.ParseString("test.sql", `
+		doc := ParseString(t, "test.sql", `
 create procedure [code].Test as begin end
 `)
 		_, err := Preprocess(doc, "abc]123", &mssql.Driver{})
@@ -281,7 +266,7 @@ create procedure [code].Test as begin end
 	})
 
 	t.Run("handles multiple creates", func(t *testing.T) {
-		doc := sqlparser.ParseString("test.sql", `
+		doc := ParseString(t, "test.sql", `
 create procedure [code].Proc1 as begin select 1 end
 go
 create procedure [code].Proc2 as begin select 2 end
@@ -295,7 +280,7 @@ create procedure [code].Proc2 as begin select 2 end
 	})
 
 	t.Run("handles multiple constants in same procedure", func(t *testing.T) {
-		doc := sqlparser.ParseString("test.sql", `
+		doc := ParseString(t, "test.sql", `
 declare @EnumA int = 1, @EnumB int = 2;
 go
 create procedure [code].Test as
@@ -313,7 +298,7 @@ end
 	})
 
 	t.Run("preserves comments and formatting", func(t *testing.T) {
-		doc := sqlparser.ParseString("test.sql", `
+		doc := ParseString(t, "test.sql", `
 -- This is a test procedure
 create procedure [code].Test as
 begin
@@ -333,7 +318,7 @@ end
 	})
 
 	t.Run("handles const and global prefixes", func(t *testing.T) {
-		doc := sqlparser.ParseString("test.sql", `
+		doc := ParseString(t, "test.sql", `
 declare @ConstValue int = 100; 
 declare @GlobalSetting nvarchar(50) = N'test';
 go
@@ -385,7 +370,7 @@ func TestPreprocessString(t *testing.T) {
 func TestPreprocessorError(t *testing.T) {
 	t.Run("formats error message", func(t *testing.T) {
 		err := PreprocessorError{
-			Pos:     sqlparser.Pos{File: "test.sql", Line: 10, Col: 5},
+			Pos:     sqldocument.Pos{File: "test.sql", Line: 10, Col: 5},
 			Message: "something went wrong",
 		}
 

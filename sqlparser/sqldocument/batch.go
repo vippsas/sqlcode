@@ -62,9 +62,6 @@ func (n *Batch) Parse(s Scanner) bool {
 
 	for {
 		tt := s.TokenType()
-
-		fmt.Printf("Batch.Parse: TokenType=%v, Token=%q\n", tt, s.Token())
-
 		switch tt {
 		case EOFToken:
 			return false
@@ -92,7 +89,7 @@ func (n *Batch) Parse(s Scanner) bool {
 				// Invoke the handler for this reserved word
 				// The handler is responsible for advancing the scanner
 				// and updating the batch as needed.
-				// If handler returns true, we continue parsing.
+				// If handler returns true, we continue parsing a new batch.
 				return handler(s, n)
 			} else {
 				s.NextToken()

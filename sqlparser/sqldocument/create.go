@@ -8,13 +8,39 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Create represents a SQL CREATE statement, such as a procedure, function, or type.
+//
+// This struct captures the metadata and body of the CREATE statement, including:
+//   - The type of object being created (procedure, function, or type)
+//   - The quoted name of the object
+//   - The full body of the CREATE statement
+//   - Any dependencies on other objects
+//   - Docstring comments preceding the CREATE statement
+//   - The SQL driver associated with the statement
 type Create struct {
-	CreateType string    // "procedure", "function" or "type"
-	QuotedName PosString // proc/func/type name, including []
-	Body       []Unparsed
-	DependsOn  []PosString
-	Docstring  []PosString   // comment lines before the create statement. Note: this is also part of Body
-	Driver     driver.Driver // the sql driver this document is intended for
+	// CreateType specifies the type of object being created.
+	// Valid values are "procedure", "function", or "type".
+	CreateType string
+
+	// QuotedName is the name of the object being created, including square brackets.
+	// For example: [MyProcedure].
+	QuotedName PosString
+
+	// Body contains the full body of the CREATE statement, including all tokens.
+	// This includes the CREATE keyword, object definition, and any trailing comments.
+	Body []Unparsed
+
+	// DependsOn lists other objects that this CREATE statement depends on.
+	// Each dependency is represented as a PosString.
+	DependsOn []PosString
+
+	// Docstring contains comments that precede the CREATE statement.
+	// These comments are typically used for documentation purposes.
+	Docstring []PosString
+
+	// Driver specifies the SQL driver associated with this CREATE statement.
+	// This is used to determine dialect-specific behavior.
+	Driver driver.Driver
 }
 
 func (c Create) DocstringAsString() string {

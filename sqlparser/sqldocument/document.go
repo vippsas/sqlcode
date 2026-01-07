@@ -5,7 +5,7 @@ import (
 	"slices"
 )
 
-// Document represents a SQL document that needs to be parsed.
+// Document represents a SQL document that needs to be deployed.
 // It will contain declarations, create statements, pragmas, and errors.
 // It provides methods to access and manipulate these components
 // for supported database drivers

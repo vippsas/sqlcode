@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/vippsas/sqlcode/sqlparser"
 	"github.com/vippsas/sqlcode/sqlparser/sqldocument"
 )
@@ -115,6 +114,8 @@ func sqlcodeTransformCreate(declares map[string]string, c sqldocument.Create, qu
 	// A @Enum replacement can lead to line numbers changing due to \n present in the literal.
 	// For this reason we need to make a mapping between source line numbers and result
 	// line numbers
+	//
+	// TODO: The sqldocument should be responsible for transforming itself, not this function.
 	for _, u := range c.Body {
 		token := u.RawValue
 		switch {
@@ -159,11 +160,6 @@ func Preprocess(doc sqldocument.Document, schemasuffix string, driver driver.Dri
 
 	// the default target for mssql
 	target := fmt.Sprintf(`[code@%s]`, schemasuffix)
-
-	// pgsql target
-	if _, ok := driver.(*stdlib.Driver); ok {
-		target = fmt.Sprintf(`"code@%s"`, schemasuffix)
-	}
 
 	for _, create := range doc.Creates() {
 		if len(create.Body) == 0 {

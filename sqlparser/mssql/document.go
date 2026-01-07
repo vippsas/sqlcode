@@ -50,6 +50,16 @@ func (d *TSqlDocument) Parse(input []byte, file sqldocument.FileRef) error {
 	s.SetInput(input)
 	s.SetFile(file)
 
+	// Functions typically consume *after* the keyword that triggered their
+	// invoication; e.g. parseCreate parses from first non-whitespace-token
+	// *after* `create`.
+	//
+	// On return, `s` is positioned at the token that starts the next statement/
+	// sub-expression. In particular trailing ';' and whitespace has been consumed.
+	//
+	// `s` will typically never be positioned on whitespace except in
+	// whitespace-preserving parsing
+	s.NextNonWhitespaceToken()
 	err := d.ParsePragmas(s)
 	if err != nil {
 		d.addError(s, err.Error())

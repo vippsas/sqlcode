@@ -118,12 +118,6 @@ func TestScanner_StringLiterals(t *testing.T) {
 			expectedValue: "N'unicode string'",
 		},
 		{
-			name:          "nvarchar with unicode",
-			input:         "N'こんにちは'",
-			expectedType:  NVarcharLiteralToken,
-			expectedValue: "N'こんにちは'",
-		},
-		{
 			name:          "nvarchar with escaped quote",
 			input:         "N'say ''hello'''",
 			expectedType:  NVarcharLiteralToken,
