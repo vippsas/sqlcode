@@ -197,16 +197,6 @@ func (f *Fixture) RunMigrationFile(filename string) {
 	}
 }
 
-func (f *Fixture) RunIfPostgres(t *testing.T, name string, fn func(t *testing.T)) {
-	t.Run("pgsql", func(t *testing.T) {
-		if f.IsPostgresql() {
-			t.Run(name, fn)
-		} else {
-			t.Skip()
-		}
-	})
-}
-
 func (f *Fixture) RunIfMssql(t *testing.T, name string, fn func(t *testing.T)) {
 	t.Run("mssql", func(t *testing.T) {
 		if f.IsSqlServer() {

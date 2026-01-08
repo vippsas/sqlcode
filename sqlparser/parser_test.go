@@ -5,7 +5,6 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -176,28 +175,6 @@ create procedure NotInCodeSchema.Test as begin end`),
 		assert.Len(t, filenames, 1)
 		// Should still parse even though it will have errors (not in [code] schema)
 		assert.NotEmpty(t, doc.Errors())
-	})
-
-	t.Run("handles pgsql extension", func(t *testing.T) {
-		fsys := fstest.MapFS{
-			"test.pgsql": &fstest.MapFile{
-				Data: []byte(`
-create procedure [code].test()
-language plpgsql
-as $$
-begin
-    perform 1;
-end;
-$$;
-`),
-			},
-		}
-
-		filenames, doc, err := ParseFilesystems([]fs.FS{fsys}, nil)
-		require.NoError(t, err)
-		assert.Len(t, filenames, 1)
-		assert.Len(t, doc.Creates(), 1)
-		assert.Equal(t, &stdlib.Driver{}, doc.Creates()[0].Driver)
 	})
 
 	t.Run("empty filesystem returns empty results", func(t *testing.T) {

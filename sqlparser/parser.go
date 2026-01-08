@@ -19,7 +19,7 @@ import (
 
 var (
 	templateRoutineName    string   = "\ndeclare @RoutineName nvarchar(128)\nset @RoutineName = '%s'\n"
-	supportedSqlExtensions []string = []string{".sql", ".pgsql"}
+	supportedSqlExtensions []string = []string{".sql"}
 	// consider something a "sqlcode source file" if it contains [code]
 	// or a --sqlcode: header
 	isSqlCodeRegex = regexp.MustCompile(`^--sqlcode:|\[code\]`)
