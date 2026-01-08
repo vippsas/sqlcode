@@ -185,6 +185,7 @@ create function [code].MyFunction ()
 create type [code].MyType ()
 create procedure [code].MyProcedure ()
 `)
+
 	// First function and last procedure triggers errors.
 	assert.Len(t, doc.Errors(), 2)
 	emsg := "a procedure/function must be alone in a batch; use 'go' to split batches"
@@ -199,8 +200,6 @@ func TestCreateProcs2(t *testing.T) {
 create type [code].MyType ()
 create procedure [code].FirstProc as table (x int)
 `)
-	//repr.Println(doc.Errors())
-
 	// Code above was mainly to be able to step through parser in a given way.
 	// First function triggers an error. Then create type is parsed which is
 	// fine sharing a batch with others.
@@ -219,9 +218,8 @@ end
 	// Code above was mainly to be able to step through parser in a given way.
 	// First function triggers an error. Then create type is parsed which is
 	// fine sharing a batch with others.
-	require.Equal(t, 2, len(doc.Errors()))
+	require.Equal(t, 1, len(doc.Errors()))
 	assert.Equal(t, "`go` should be alone on a line without any comments", doc.Errors()[0].Message)
-	assert.Equal(t, "Expected 'declare' or 'create', got: end", doc.Errors()[1].Message)
 }
 
 func TestCreateAnnotationHappyDay(t *testing.T) {

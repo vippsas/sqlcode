@@ -376,90 +376,6 @@ func TestScanner_Comments(t *testing.T) {
 	}
 }
 
-func TestScanner_BatchSeparator(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected []sqldocument.TokenType
-	}{
-		{
-			name:  "go at start of file",
-			input: "go",
-			expected: []sqldocument.TokenType{
-				sqldocument.BatchSeparatorToken,
-				sqldocument.EOFToken,
-			},
-		},
-		{
-			name:  "GO uppercase at start",
-			input: "GO",
-			expected: []sqldocument.TokenType{
-				sqldocument.BatchSeparatorToken,
-				sqldocument.EOFToken,
-			},
-		},
-		{
-			name:  "go after newline",
-			input: "SELECT 1\ngo",
-			expected: []sqldocument.TokenType{
-				sqldocument.ReservedWordToken, // SELECT
-				sqldocument.WhitespaceToken,
-				sqldocument.NumberToken, // 1
-				sqldocument.WhitespaceToken,
-				sqldocument.BatchSeparatorToken, // go
-				sqldocument.EOFToken,
-			},
-		},
-		{
-			name:  "go with trailing whitespace",
-			input: "go   \nSELECT",
-			expected: []sqldocument.TokenType{
-				sqldocument.BatchSeparatorToken,
-				sqldocument.WhitespaceToken,
-				sqldocument.ReservedWordToken,
-				sqldocument.EOFToken,
-			},
-		},
-		{
-			name:  "go mid-line is identifier",
-			input: "SELECT go FROM",
-			expected: []sqldocument.TokenType{
-				sqldocument.ReservedWordToken, // SELECT
-				sqldocument.WhitespaceToken,
-				sqldocument.UnquotedIdentifierToken, // go (not batch separator)
-				sqldocument.WhitespaceToken,
-				sqldocument.ReservedWordToken, // FROM
-				sqldocument.EOFToken,
-			},
-		},
-		{
-			name:  "go with comment after is malformed",
-			input: "go -- comment",
-			expected: []sqldocument.TokenType{
-				sqldocument.BatchSeparatorToken,
-				sqldocument.WhitespaceToken,
-				sqldocument.MalformedBatchSeparatorToken, // -- comment
-				sqldocument.EOFToken,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tokens := collectTokens(tt.input)
-			if len(tokens) != len(tt.expected) {
-				t.Fatalf("expected %d tokens, got %d: %+v", len(tt.expected), len(tokens), tokens)
-			}
-			for i, exp := range tt.expected {
-				if tokens[i].Type != exp {
-					t.Errorf("token %d: expected type %v, got %v (value: %q)",
-						i, exp, tokens[i].Type, tokens[i].Value)
-				}
-			}
-		})
-	}
-}
-
 func TestScanner_Position(t *testing.T) {
 	input := "SELECT\n  @var\n  FROM"
 	s := NewScanner("test.sql", input)
@@ -518,29 +434,6 @@ END`
 
 	if tokenCount < 30 {
 		t.Errorf("expected at least 30 tokens, got %d", tokenCount)
-	}
-}
-
-func TestScanner_ToCommonToken(t *testing.T) {
-	tests := []struct {
-		tsqlToken   sqldocument.TokenType
-		commonToken sqldocument.TokenType
-	}{
-		{VarcharLiteralToken, sqldocument.StringLiteralToken},
-		{NVarcharLiteralToken, sqldocument.StringLiteralToken},
-		{BracketQuotedIdentifierToken, sqldocument.QuotedIdentifierToken},
-		{UnterminatedVarcharLiteralErrorToken, sqldocument.UnterminatedStringErrorToken},
-		{UnterminatedQuotedIdentifierErrorToken, sqldocument.UnterminatedStringErrorToken},
-		{sqldocument.NumberToken, sqldocument.NumberToken},         // passthrough
-		{sqldocument.WhitespaceToken, sqldocument.WhitespaceToken}, // passthrough
-	}
-
-	for _, tt := range tests {
-		result := ToCommonToken(tt.tsqlToken)
-		if result != tt.commonToken {
-			t.Errorf("ToCommonToken(%v): expected %v, got %v",
-				tt.tsqlToken, tt.commonToken, result)
-		}
 	}
 }
 

@@ -292,56 +292,63 @@ func (doc *TSqlDocument) parseDeclareBatch(s sqldocument.Scanner) (hasMore bool)
 // The isFirst parameter indicates whether this is the first batch in the file,
 // which affects whether DECLARE statements are allowed.
 func (doc *TSqlDocument) parseBatch(s sqldocument.Scanner, isFirst bool) (hasMore bool) {
-	batch := &sqldocument.Batch{
-		BatchSeparatorHandler: func(s sqldocument.Scanner, b *sqldocument.Batch) {
-			errorEmitted := false
-			for {
-				switch s.NextToken() {
-				case sqldocument.WhitespaceToken:
-					continue
-				case sqldocument.MalformedBatchSeparatorToken:
-					if !errorEmitted {
-						b.Errors = append(b.Errors, sqldocument.Error{
-							Pos:     s.Start(),
-							Message: "`go` should be alone on a line without any comments",
-						})
-						errorEmitted = true
-					}
-					continue
-				default:
-					return
+	batch := sqldocument.NewBatch()
+	batch.BatchSeparatorHandler = func(s sqldocument.Scanner, b *sqldocument.Batch) {
+		errorEmitted := false
+		for {
+			switch s.NextToken() {
+			case sqldocument.WhitespaceToken:
+				continue
+			case sqldocument.MalformedBatchSeparatorToken:
+				if !errorEmitted {
+					b.Errors = append(b.Errors, sqldocument.Error{
+						Pos:     s.Start(),
+						Message: "`go` should be alone on a line without any comments",
+					})
+					errorEmitted = true
 				}
+				continue
+			default:
+				return
 			}
+		}
+	}
+	batch.TokenHandlers = map[string]func(sqldocument.Scanner, *sqldocument.Batch) int{
+		"declare": func(s sqldocument.Scanner, _ *sqldocument.Batch) int {
+			// First declare-statement; enter a mode where we assume all contents
+			// of batch are declare statements
+			if !isFirst {
+				doc.addError(s, "'declare' statement only allowed in first batch")
+			}
+
+			// regardless of errors, go on and parse as far as we get...
+			hasMore := doc.parseDeclareBatch(s)
+			if hasMore {
+				return 1
+			}
+
+			return -1
 		},
-		TokenHandlers: map[string]func(sqldocument.Scanner, *sqldocument.Batch) bool{
-			"declare": func(s sqldocument.Scanner, n *sqldocument.Batch) bool {
-				// First declare-statement; enter a mode where we assume all contents
-				// of batch are declare statements
-				if !isFirst {
-					doc.addError(s, "'declare' statement only allowed in first batch")
-				}
+		"create": func(s sqldocument.Scanner, b *sqldocument.Batch) int {
+			counts, exists := b.TokenCalls["create"]
+			if !exists {
+				counts = 0
+			}
 
-				// regardless of errors, go on and parse as far as we get...
-				return doc.parseDeclareBatch(s)
-			},
-			"create": func(s sqldocument.Scanner, n *sqldocument.Batch) bool {
-				// should be start of create procedure or create function...
-				c := doc.parseCreate(s, n.CreateStatements)
-				c.Driver = &mssql.Driver{}
+			// should be start of create procedure or create function...
+			c := doc.parseCreate(s, counts)
+			c.Driver = &mssql.Driver{}
 
-				// *prepend* what we saw before getting to the 'create'
-				n.CreateStatements++
-				c.Body = append(n.Nodes, c.Body...)
-				c.Docstring = n.DocString
-				doc.creates = append(doc.creates, c)
+			// *prepend* what we saw before getting to the 'create'
+			c.Body = append(b.Nodes, c.Body...)
+			c.Docstring = b.DocString
+			doc.creates = append(doc.creates, c)
 
-				// fmt.Printf("%#v\n", s)
-				// fmt.Printf("%#v\n", n)
-				// fmt.Printf("%#v\n", doc)
-				return true
-			},
+			//continue parsing
+			return 0
 		},
 	}
+
 	hasMore = batch.Parse(s)
 	if batch.HasErrors() {
 		doc.errors = append(doc.errors, batch.Errors...)
@@ -397,6 +404,7 @@ func (d *TSqlDocument) parseCreate(s sqldocument.Scanner, createCountInBatch int
 		sqldocument.RecoverToNextStatementCopying(s, &result.Body, TSQLStatementTokens)
 		return
 	}
+
 	var err error
 	result.QuotedName, err = sqldocument.ParseCodeschemaName(s, &result.Body, TSQLStatementTokens)
 	if err != nil {

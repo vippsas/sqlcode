@@ -27,17 +27,21 @@ type Batch struct {
 	// Reset when non-comment, non-whitespace tokens are encountered.
 	DocString []PosString
 
-	// CreateStatements tracks how many CREATE statements have been
-	// processed in this batch. Can be used to enforce the validation rules
+	// TokenCalls tracks how many Token handlers have been
+	// called in this batch. Can be used to enforce the validation rules
 	// that procedures and functions must be alone in their batch.
-	CreateStatements int
+	TokenCalls map[string]int
 
 	// TokenHandlers maps reserved words to their processing functions.
 	// When a ReservedWordToken is encountered, its lowercase form is
 	// looked up here. If found, the handler is called with the scanner
-	// and batch. The handler returns true if parsing should continue
+	// and batch.
+	// The handler returns 1 if parsing should continue
 	// with a new batch (e.g., after processing a batch separator).
-	TokenHandlers map[string]func(Scanner, *Batch) bool
+	// 		1 = break and parse a new batch
+	// 		0 = continue (no return)
+	//  	-1 = return false (stop parsing)
+	TokenHandlers map[string]func(Scanner, *Batch) int
 
 	// Errors accumulates parsing errors encountered during batch processing.
 	// Errors are collected rather than stopping parsing immediately,
@@ -46,6 +50,15 @@ type Batch struct {
 
 	// BatchSeparatorHandler is called when a token is encountered.
 	BatchSeparatorHandler func(Scanner, *Batch)
+}
+
+func NewBatch() *Batch {
+	return &Batch{
+		TokenCalls: make(map[string]int, 0),
+		Nodes:      make([]Unparsed, 0),
+		DocString:  make([]PosString, 0),
+		Errors:     make([]Error, 0),
+	}
 }
 
 func (n *Batch) Create(s Scanner) {
@@ -89,8 +102,14 @@ func (n *Batch) Parse(s Scanner) bool {
 				// Invoke the handler for this reserved word
 				// The handler is responsible for advancing the scanner
 				// and updating the batch as needed.
-				// If handler returns true, we continue parsing a new batch.
-				return handler(s, n)
+				rt := handler(s, n)
+				n.TokenCalls[token] += 1
+				if rt == 1 {
+					return true
+				}
+				if rt == -1 {
+					return false
+				}
 			} else {
 				s.NextToken()
 			}
