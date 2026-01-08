@@ -50,6 +50,10 @@ func ParseFilesystems(fslst []fs.FS, includeTags []string) (filenames []string, 
 
 	hashes := make(map[[32]byte]string)
 
+	if result == nil {
+		result = &mssql.TSqlDocument{}
+	}
+
 	for fidx, fsys := range fslst {
 		// WalkDir is in lexical order according to docs, so output should be stable
 		err = fs.WalkDir(fsys, ".",
@@ -97,9 +101,6 @@ func ParseFilesystems(fslst []fs.FS, includeTags []string) (filenames []string, 
 					// only include if include tags match
 					if matchesIncludeTags(fdoc.PragmaIncludeIf(), includeTags) {
 						filenames = append(filenames, pathDesc)
-						if result == nil {
-							result = &mssql.TSqlDocument{}
-						}
 						result.Include(fdoc)
 					}
 				}
