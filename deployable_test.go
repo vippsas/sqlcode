@@ -21,5 +21,11 @@ declare @EnumInt int = 1, @EnumString varchar(max) = 'hello';
 	n, err := d.IntConst("@EnumInt")
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)
+}
 
+func TestPatch(t *testing.T) {
+	t.Run("mssql schemasuffix", func(t *testing.T) {
+		d := Deployable{}
+		require.Equal(t, "[code@].Foo", d.Patch("[code].Foo"))
+	})
 }

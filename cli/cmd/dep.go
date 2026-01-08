@@ -36,16 +36,16 @@ var (
 				fmt.Println()
 				err = nil
 			}
-			if len(d.CodeBase.Creates) == 0 && len(d.CodeBase.Declares) == 0 {
+			if d.CodeBase.Empty() {
 				fmt.Println("No SQL code found in given paths")
 			}
-			if len(d.CodeBase.Errors) > 0 {
+			if d.CodeBase.HasErrors() {
 				fmt.Println("Errors:")
-				for _, e := range d.CodeBase.Errors {
+				for _, e := range d.CodeBase.Errors() {
 					fmt.Printf("%s:%d:%d: %s\n", e.Pos.File, e.Pos.Line, e.Pos.Line, e.Message)
 				}
 			}
-			for _, c := range d.CodeBase.Creates {
+			for _, c := range d.CodeBase.Creates() {
 				fmt.Println(c.QuotedName.String() + ":")
 				if len(c.DependsOn) > 0 {
 					fmt.Println("  Uses:")

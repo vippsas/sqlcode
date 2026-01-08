@@ -3,6 +3,7 @@ package sqlcode
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 )
 
 type DB interface {
@@ -11,6 +12,7 @@ type DB interface {
 	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
 	Conn(ctx context.Context) (*sql.Conn, error)
 	BeginTx(ctx context.Context, txOptions *sql.TxOptions) (*sql.Tx, error)
+	Driver() driver.Driver
 }
 
 var _ DB = &sql.DB{}
