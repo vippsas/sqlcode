@@ -87,7 +87,7 @@ func NewFixture() *Fixture {
 		// 8: Trace SQL statements
 		// 16: Log statement parameters
 		// 32: Log transaction begin/end
-		dsn = dsn + "&log=63"
+		dsn = dsn + "&log=2"
 		mssql.SetLogger(StdoutLogger{})
 		fixture.Driver = SqlDriverMssql
 	}

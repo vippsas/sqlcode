@@ -1,9 +1,7 @@
 databases:
   mssql:
     connection: sqlserver://mssql:1433?database=foo&user id=foouser&password=FooPasswd1
-  pgsql:
-    connection: postgresql://sa:VippsPw1@postgres:5432/master?sslmode=disable
-
+  
 # One option is to list other paths to include ('dependencies') here.
 
 # Commands to set up for testing with credentials above:

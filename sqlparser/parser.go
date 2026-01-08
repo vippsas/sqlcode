@@ -6,7 +6,6 @@ package sqlparser
 
 import (
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"io/fs"
 	"path/filepath"
@@ -84,8 +83,8 @@ func ParseFilesystems(fslst []fs.FS, includeTags []string) (filenames []string, 
 					hash := sha256.Sum256(buf)
 					existingPathDesc, hashExists := hashes[hash]
 					if hashExists {
-						return errors.New(fmt.Sprintf("file %s has exact same contents as %s (possibly in different filesystems)",
-							pathDesc, existingPathDesc))
+						return fmt.Errorf("file %s has exact same contents as %s (possibly in different filesystems)",
+							pathDesc, existingPathDesc)
 					}
 					hashes[hash] = pathDesc
 
@@ -98,6 +97,9 @@ func ParseFilesystems(fslst []fs.FS, includeTags []string) (filenames []string, 
 					// only include if include tags match
 					if matchesIncludeTags(fdoc.PragmaIncludeIf(), includeTags) {
 						filenames = append(filenames, pathDesc)
+						if result == nil {
+							result = &mssql.TSqlDocument{}
+						}
 						result.Include(fdoc)
 					}
 				}
