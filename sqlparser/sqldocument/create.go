@@ -8,6 +8,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type CreateType int
+
+const (
+	SQLProcedure CreateType = iota
+	SQLFunction
+	SQLType
+)
+
+var CreateTypeMapping = map[string]CreateType{
+	"procedure": SQLProcedure,
+	"function":  SQLFunction,
+	"type":      SQLType,
+}
+
 // Create represents a SQL CREATE statement, such as a procedure, function, or type.
 //
 // This struct captures the metadata and body of the CREATE statement, including:
@@ -20,7 +34,7 @@ import (
 type Create struct {
 	// CreateType specifies the type of object being created.
 	// Valid values are "procedure", "function", or "type".
-	CreateType string
+	CreateType CreateType
 
 	// QuotedName is the name of the object being created, including square brackets.
 	// For example: [MyProcedure].

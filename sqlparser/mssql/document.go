@@ -381,13 +381,14 @@ func (d *TSqlDocument) parseCreate(s sqldocument.Scanner, createCountInBatch int
 
 	sqldocument.NextTokenCopyingWhitespace(s, &result.Body)
 
-	createType := strings.ToLower(s.Token())
-	if !(createType == "procedure" || createType == "function" || createType == "type") {
+	createType, exists := sqldocument.CreateTypeMapping[strings.ToLower(s.Token())]
+
+	if !exists {
 		d.addError(s, fmt.Sprintf("sqlcode only supports creating procedures, functions or types; not `%s`", createType))
 		sqldocument.RecoverToNextStatementCopying(s, &result.Body, TSQLStatementTokens)
 		return
 	}
-	if (createType == "procedure" || createType == "function") && createCountInBatch > 0 {
+	if (createType == sqldocument.SQLProcedure || createType == sqldocument.SQLFunction) && createCountInBatch > 0 {
 		d.addError(s, "a procedure/function must be alone in a batch; use 'go' to split batches")
 		sqldocument.RecoverToNextStatementCopying(s, &result.Body, TSQLStatementTokens)
 		return
@@ -430,7 +431,7 @@ tailloop:
 			// (createType is referring to how we entered this function, *NOT* the
 			// `create` statement we are looking at now
 			switch createType { // note: this is the *outer* create type, not the one of current scanner position
-			case "function", "procedure":
+			case sqldocument.SQLFunction, sqldocument.SQLProcedure:
 				// Within a function/procedure we can allow 'create index', 'create table' and nothing
 				// else. (Well, only procedures can have them, but we'll leave it to T-SQL to complain
 				// about that aspect, not relevant for batch / dependency parsing)
@@ -447,7 +448,7 @@ tailloop:
 					d.addError(s, "a procedure/function must be alone in a batch; use 'go' to split batches")
 					return
 				}
-			case "type":
+			case sqldocument.SQLType:
 				// We allow more than one type creation in a batch; and 'create' can never appear
 				// scoped within 'create type'. So at a new create we are done with the previous
 				// one, and return it -- the caller can then re-enter this function from the top

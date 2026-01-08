@@ -101,7 +101,7 @@ func TestBuggyDeclare(t *testing.T) {
 func TestCreateType(t *testing.T) {
 	doc := ParseString(t, "test.sql", `create type [code].MyType as table (x int not null primary key);`)
 	assert.Equal(t, 1, len(doc.Creates()))
-	assert.Equal(t, "type", doc.Creates()[0].CreateType)
+	assert.Equal(t, sqldocument.SQLType, doc.Creates()[0].CreateType)
 	assert.Equal(t, "[MyType]", doc.Creates()[0].QuotedName.Value)
 }
 
