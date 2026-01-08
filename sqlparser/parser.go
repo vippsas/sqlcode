@@ -28,11 +28,18 @@ var (
 // Based on the input file extension, create the appropriate Document type
 func NewDocumentFromExtension(extension string) sqldocument.Document {
 	switch extension {
-	case ".sql":
+	case ".sql", "sql":
 		return &mssql.TSqlDocument{}
 	default:
 		panic("unhandled document type: " + extension)
 	}
+}
+
+// Helper function
+func ParseString(file, input string) sqldocument.Document {
+	doc := NewDocumentFromExtension(filepath.Ext(file))
+	doc.Parse([]byte(input), sqldocument.FileRef(file))
+	return doc
 }
 
 // ParseFileystems iterates through a list of filesystems and parses all supported
