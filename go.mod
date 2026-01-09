@@ -1,4 +1,4 @@
-module github.com/vippsas/sqlcode
+module github.com/simukka/sqlcode
 
 go 1.24.3
 
