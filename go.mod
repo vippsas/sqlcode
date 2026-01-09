@@ -1,4 +1,4 @@
-module github.com/simukka/sqlcode
+module github.com/simukka/sqlcode/v2
 
 go 1.25.0
 
