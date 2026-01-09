@@ -6,8 +6,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/simukka/sqlcode/sqlparser/sqldocument"
 	"github.com/smasher164/xid"
-	"github.com/vippsas/sqlcode/sqlparser/sqldocument"
 )
 
 // Scanner is a lexical scanner for T-SQL source code.

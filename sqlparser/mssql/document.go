@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	mssql "github.com/microsoft/go-mssqldb"
-	"github.com/vippsas/sqlcode/sqlparser/sqldocument"
+	"github.com/simukka/sqlcode/sqlparser/sqldocument"
 )
 
 // TSQLStatementTokens defines the keywords that start new statements.

@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	mssql "github.com/microsoft/go-mssqldb"
+	"github.com/simukka/sqlcode"
 	"github.com/spf13/cobra"
-	"github.com/vippsas/sqlcode"
 )
 
 var (

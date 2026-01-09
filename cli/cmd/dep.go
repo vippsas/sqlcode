@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/simukka/sqlcode"
 	"github.com/spf13/cobra"
-	"github.com/vippsas/sqlcode"
 )
 
 func dep(partialParseResults bool) (d sqlcode.Deployable, err error) {

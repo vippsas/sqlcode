@@ -3,7 +3,7 @@ package mssql
 import (
 	"testing"
 
-	"github.com/vippsas/sqlcode/sqlparser/sqldocument"
+	"github.com/simukka/sqlcode/sqlparser/sqldocument"
 )
 
 // Helper to collect all tokens from input

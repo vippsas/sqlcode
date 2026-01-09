@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+
+	"github.com/simukka/sqlcode"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	"github.com/vippsas/sqlcode"
-	"strings"
 )
 
 var (

@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/simukka/sqlcode/sqltest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/vippsas/sqlcode/sqltest"
 )
 
 func TestPreprocess(t *testing.T) {

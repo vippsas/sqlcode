@@ -14,8 +14,8 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	pgxstdlib "github.com/jackc/pgx/v5/stdlib"
 	mssql "github.com/microsoft/go-mssqldb"
-	"github.com/vippsas/sqlcode/sqlparser"
-	"github.com/vippsas/sqlcode/sqlparser/sqldocument"
+	"github.com/simukka/sqlcode/sqlparser"
+	"github.com/simukka/sqlcode/sqlparser/sqldocument"
 )
 
 type Deployable struct {

@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	mssql "github.com/microsoft/go-mssqldb"
+	"github.com/simukka/sqlcode/sqlparser"
+	mssql17 "github.com/simukka/sqlcode/sqlparser/mssql"
+	"github.com/simukka/sqlcode/sqlparser/sqldocument"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/vippsas/sqlcode/sqlparser"
-	mssql17 "github.com/vippsas/sqlcode/sqlparser/mssql"
-	"github.com/vippsas/sqlcode/sqlparser/sqldocument"
 )
 
 func ParseString(t *testing.T, file, input string) *mssql17.TSqlDocument {

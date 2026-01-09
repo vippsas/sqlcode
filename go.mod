@@ -1,11 +1,11 @@
 module github.com/simukka/sqlcode
 
-go 1.24.3
+go 1.25.0
 
 require (
 	github.com/alecthomas/repr v0.5.2
 	github.com/gofrs/uuid v4.4.0+incompatible
-	github.com/jackc/pgx/v5 v5.7.6
+	github.com/jackc/pgx/v5 v5.8.0
 	github.com/microsoft/go-mssqldb v1.9.5
 	github.com/sirupsen/logrus v1.9.3
 	github.com/smasher164/xid v0.1.2

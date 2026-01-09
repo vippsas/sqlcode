@@ -6,7 +6,7 @@ package example
 import (
 	"embed"
 
-	"github.com/vippsas/sqlcode"
+	"github.com/simukka/sqlcode"
 )
 
 //go:embed *.sql

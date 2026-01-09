@@ -37,7 +37,7 @@ $ go build -o ~/.local/bin/sqlcode ./cli
 
 To fetch the Go library:
 ```sh
-$ go get github.com/vippsas/sqlcode
+$ go get github.com/simukka/sqlcode
 ```
 
 ## HOWTO
@@ -176,7 +176,7 @@ package mypackage
 
 import (
     "embed"
-    "github.com/vippsas/sqlcode"
+    "github.com/simukka/sqlcode"
 )
 
 //go:embed *.sql
