@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/simukka/sqlcode/sqltest"
+	"github.com/simukka/sqlcode/v2/sqltest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

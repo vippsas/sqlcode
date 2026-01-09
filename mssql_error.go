@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	mssql "github.com/microsoft/go-mssqldb"
-	"github.com/simukka/sqlcode/sqlparser/sqldocument"
+	"github.com/simukka/sqlcode/v2/sqlparser/sqldocument"
 )
 
 type MSSQLUserError struct {

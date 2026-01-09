@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	mssql "github.com/microsoft/go-mssqldb"
-	"github.com/simukka/sqlcode"
+	"github.com/simukka/sqlcode/v2"
 	"github.com/spf13/cobra"
 )
 

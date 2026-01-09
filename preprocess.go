@@ -10,8 +10,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/simukka/sqlcode/sqlparser"
-	"github.com/simukka/sqlcode/sqlparser/sqldocument"
+	"github.com/simukka/sqlcode/v2/sqlparser"
+	"github.com/simukka/sqlcode/v2/sqlparser/sqldocument"
 )
 
 func SchemaSuffixFromHash(doc sqldocument.Document) string {

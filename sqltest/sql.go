@@ -3,7 +3,7 @@ package sqltest
 import (
 	"embed"
 
-	"github.com/simukka/sqlcode"
+	"github.com/simukka/sqlcode/v2"
 )
 
 //go:embed *.sql

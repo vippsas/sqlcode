@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/simukka/sqlcode"
+	"github.com/simukka/sqlcode/v2"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )

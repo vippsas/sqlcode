@@ -6,7 +6,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/simukka/sqlcode/sqlparser/sqldocument"
+	"github.com/simukka/sqlcode/v2/sqlparser/sqldocument"
 	"github.com/smasher164/xid"
 )
 

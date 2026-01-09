@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	mssql "github.com/microsoft/go-mssqldb"
-	"github.com/simukka/sqlcode/sqlparser/sqldocument"
+	"github.com/simukka/sqlcode/v2/sqlparser/sqldocument"
 )
 
 // TSQLStatementTokens defines the keywords that start new statements.
@@ -381,10 +381,11 @@ func (d *TSqlDocument) parseCreate(s sqldocument.Scanner, createCountInBatch int
 
 	sqldocument.NextTokenCopyingWhitespace(s, &result.Body)
 
-	createType, exists := sqldocument.CreateTypeMapping[strings.ToLower(s.Token())]
+	rawType := strings.ToLower(s.Token())
+	createType, exists := sqldocument.CreateTypeMapping[rawType]
 
 	if !exists {
-		d.addError(s, fmt.Sprintf("sqlcode only supports creating procedures, functions or types; not `%s`", createType))
+		d.addError(s, fmt.Sprintf("sqlcode only supports creating procedures, functions or types; not `%s`", rawType))
 		sqldocument.RecoverToNextStatementCopying(s, &result.Body, TSQLStatementTokens)
 		return
 	}
@@ -401,7 +402,7 @@ func (d *TSqlDocument) parseCreate(s sqldocument.Scanner, createCountInBatch int
 
 	// Insist on [code].
 	if s.TokenType() != sqldocument.QuotedIdentifierToken || s.Token() != "[code]" {
-		d.addError(s, fmt.Sprintf("create %s must be followed by [code].", result.CreateType))
+		d.addError(s, fmt.Sprintf("create %s must be followed by [code].", rawType))
 		sqldocument.RecoverToNextStatementCopying(s, &result.Body, TSQLStatementTokens)
 		return
 	}

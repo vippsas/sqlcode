@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	mssql "github.com/microsoft/go-mssqldb"
-	"github.com/simukka/sqlcode/sqlparser"
-	mssql17 "github.com/simukka/sqlcode/sqlparser/mssql"
-	"github.com/simukka/sqlcode/sqlparser/sqldocument"
+	"github.com/simukka/sqlcode/v2/sqlparser"
+	mssql17 "github.com/simukka/sqlcode/v2/sqlparser/mssql"
+	"github.com/simukka/sqlcode/v2/sqlparser/sqldocument"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

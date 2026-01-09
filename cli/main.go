@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/simukka/sqlcode/cli/cmd"
+	"github.com/simukka/sqlcode/v2/cli/cmd"
 )
 
 func main() {

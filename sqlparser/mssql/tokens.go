@@ -1,6 +1,6 @@
 package mssql
 
-import "github.com/simukka/sqlcode/sqlparser/sqldocument"
+import "github.com/simukka/sqlcode/v2/sqlparser/sqldocument"
 
 // T-SQL specific tokens (range 1000-1999)
 //
