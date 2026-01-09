@@ -4,14 +4,29 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	mssql "github.com/denisenkom/go-mssqldb"
-	"github.com/denisenkom/go-mssqldb/msdsn"
-	"github.com/gofrs/uuid"
-	"io/ioutil"
 	"os"
 	"strings"
+	"testing"
 	"time"
+
+	"github.com/gofrs/uuid"
+	_ "github.com/jackc/pgx/v5"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	mssql "github.com/microsoft/go-mssqldb"
+	"github.com/microsoft/go-mssqldb/msdsn"
 )
+
+type SqlDriverType int
+
+const (
+	SqlDriverMssql SqlDriverType = iota
+	SqlDriverPgx
+)
+
+var sqlDrivers = map[SqlDriverType]string{
+	SqlDriverMssql: "sqlserver",
+	SqlDriverPgx:   "pgx",
+}
 
 type StdoutLogger struct {
 }
@@ -30,6 +45,26 @@ type Fixture struct {
 	DB      *sql.DB
 	DBName  string
 	adminDB *sql.DB
+	Driver  SqlDriverType
+}
+
+func (f *Fixture) IsSqlServer() bool {
+	return f.Driver == SqlDriverMssql
+}
+
+func (f *Fixture) IsPostgresql() bool {
+	return f.Driver == SqlDriverPgx
+}
+
+// SQL specific quoting syntax
+func (f *Fixture) Quote(value string) string {
+	if f.IsSqlServer() {
+		return fmt.Sprintf("[%s]", value)
+	}
+	if f.IsPostgresql() {
+		return fmt.Sprintf(`"%s"`, value)
+	}
+	return value
 }
 
 func NewFixture() *Fixture {
@@ -39,44 +74,91 @@ func NewFixture() *Fixture {
 	defer cancel()
 
 	dsn := os.Getenv("SQLSERVER_DSN")
-	if dsn == "" {
+	if len(dsn) == 0 {
 		panic("Must set SQLSERVER_DSN to run tests")
 	}
-	dsn = dsn + "&log=3"
 
-	mssql.SetLogger(StdoutLogger{})
+	if strings.Contains(dsn, "sqlserver") {
+		// set the logging level
+		// To enable specific logging levels, you sum the values of the desired flags
+		// 1: Log errors
+		// 2: Log messages
+		// 4: Log rows affected
+		// 8: Trace SQL statements
+		// 16: Log statement parameters
+		// 32: Log transaction begin/end
+		dsn = dsn + "&log=2"
+		mssql.SetLogger(StdoutLogger{})
+		fixture.Driver = SqlDriverMssql
+	}
+	if strings.Contains(dsn, "postgresql") {
+		fixture.Driver = SqlDriverPgx
+		// https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-CLIENT-MIN-MESSAGES
+		dsn = dsn + "&options=-c%20client_min_messages%3DDEBUG5"
+	}
 
 	var err error
-
-	fixture.adminDB, err = sql.Open("sqlserver", dsn)
+	fixture.adminDB, err = sql.Open(sqlDrivers[fixture.Driver], dsn)
 	if err != nil {
 		panic(err)
 	}
+
 	fixture.DBName = strings.ReplaceAll(uuid.Must(uuid.NewV4()).String(), "-", "")
-
-	_, err = fixture.adminDB.ExecContext(ctx, fmt.Sprintf(`create database [%s]`, fixture.DBName))
+	dbname := fixture.Quote(fixture.DBName)
+	qs := fmt.Sprintf(`create database %s`, dbname)
+	_, err = fixture.adminDB.ExecContext(ctx, qs)
 	if err != nil {
-		panic(err)
-	}
-	// These settings are just to get "worst-case" for our tests, since snapshot could interfer
-	_, err = fixture.adminDB.ExecContext(ctx, fmt.Sprintf(`alter database [%s] set allow_snapshot_isolation on`, fixture.DBName))
-	if err != nil {
-		panic(err)
-	}
-	_, err = fixture.adminDB.ExecContext(ctx, fmt.Sprintf(`alter database [%s] set read_committed_snapshot on`, fixture.DBName))
-	if err != nil {
+		fmt.Printf("Failed to create the (%s) database: %s: %e\n", sqlDrivers[fixture.Driver], dbname, err)
 		panic(err)
 	}
 
-	pdsn, _, err := msdsn.Parse(dsn)
-	if err != nil {
-		panic(err)
-	}
-	pdsn.Database = fixture.DBName
+	if fixture.IsSqlServer() {
+		// These settings are just to get "worst-case" for our tests, since snapshot could interfer
+		_, err = fixture.adminDB.ExecContext(ctx, fmt.Sprintf(`alter database %s set allow_snapshot_isolation on`, dbname))
+		if err != nil {
+			panic(err)
+		}
+		_, err = fixture.adminDB.ExecContext(ctx, fmt.Sprintf(`alter database %s set read_committed_snapshot on`, dbname))
+		if err != nil {
+			panic(err)
+		}
 
-	fixture.DB, err = sql.Open("sqlserver", pdsn.URL().String())
-	if err != nil {
-		panic(err)
+		pdsn, err := msdsn.Parse(dsn)
+		if err != nil {
+			panic(err)
+		}
+		pdsn.Database = fixture.DBName
+
+		fixture.DB, err = sql.Open(sqlDrivers[fixture.Driver], pdsn.URL().String())
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	if fixture.IsPostgresql() {
+		// TODO use pgx config parser
+		fixture.DB, err = sql.Open(sqlDrivers[fixture.Driver], strings.ReplaceAll(dsn, "/master", "/"+fixture.DBName))
+		if err != nil {
+			panic(err)
+		}
+
+		var user string
+		err = fixture.DB.QueryRow(`select current_user`).Scan(&user)
+		if err != nil {
+			panic(err)
+		}
+		_, err = fixture.DB.Exec(fmt.Sprintf(`GRANT ALL ON DATABASE "%s" TO sa;`, fixture.DBName))
+		if err != nil {
+			panic(err)
+		}
+		_, err = fixture.DB.Exec(fmt.Sprintf(`GRANT ALL PRIVILEGES ON SCHEMA public TO %s;`, user))
+		if err != nil {
+			panic(err)
+		}
+		_, err = fixture.DB.Exec(fmt.Sprintf(`ALTER DATABASE "%s" OWNER TO sa;`, fixture.DBName))
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	return &fixture
@@ -92,13 +174,16 @@ func (f *Fixture) Teardown() {
 
 	_ = f.DB.Close()
 	f.DB = nil
-	_, _ = f.adminDB.ExecContext(ctx, fmt.Sprintf(`drop database [%s]`, f.DBName))
+	_, err := f.adminDB.ExecContext(ctx, fmt.Sprintf(`drop database %s`, f.Quote(f.DBName)))
+	if err != nil {
+		fmt.Printf("Failed to drop (%s) database %s: %e", sqlDrivers[f.Driver], f.DBName, err)
+	}
 	_ = f.adminDB.Close()
 	f.adminDB = nil
 }
 
-func (f *Fixture) RunMigrations() {
-	migrationSql, err := ioutil.ReadFile("migrations/from0001/0001.changefeed.sql")
+func (f *Fixture) RunMigrationFile(filename string) {
+	migrationSql, err := os.ReadFile(filename)
 	if err != nil {
 		panic(err)
 	}
@@ -112,17 +197,12 @@ func (f *Fixture) RunMigrations() {
 	}
 }
 
-func (f *Fixture) RunMigrationFile(filename string) {
-	migrationSql, err := ioutil.ReadFile(filename)
-	if err != nil {
-		panic(err)
-	}
-	parts := strings.Split(string(migrationSql), "\ngo\n")
-	for _, p := range parts {
-		_, err = f.DB.Exec(p)
-		if err != nil {
-			fmt.Println(p)
-			panic(err)
+func (f *Fixture) RunIfMssql(t *testing.T, name string, fn func(t *testing.T)) {
+	t.Run("mssql", func(t *testing.T) {
+		if f.IsSqlServer() {
+			t.Run(name, fn)
+		} else {
+			t.Skip()
 		}
-	}
+	})
 }

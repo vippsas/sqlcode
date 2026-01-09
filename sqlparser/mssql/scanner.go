@@ -1,95 +1,133 @@
-package sqlparser
+package mssql
 
 import (
-	"github.com/smasher164/xid"
 	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/smasher164/xid"
+	"github.com/vippsas/sqlcode/sqlparser/sqldocument"
 )
 
-// dedicated type for reference to file, in case we need to refactor this later..
-type FileRef string
-
-type Pos struct {
-	File      FileRef
-	Line, Col int
-}
-
-// We don't do the lexer/parser split / token stream, but simply use the
-// Scanner directly from the recursive descent parser; it is simply a cursor
-// in the buffer with associated utility methods
+// Scanner is a lexical scanner for T-SQL source code.
+//
+// Unlike traditional lexer/parser architectures with a token stream, Scanner
+// is used directly by the recursive descent parser as a cursor into the input
+// buffer. It provides utility methods for tokenization and position tracking.
+//
+// The scanner handles T-SQL specific constructs including:
+//   - String literals ('...' and N'...')
+//   - Quoted identifiers ([...])
+//   - Single-line (--) and multi-line (/* */) comments
+//   - Batch separators (GO)
+//   - Reserved words
+//   - Variables (@identifier)
 type Scanner struct {
-	input string
-	file  FileRef
+	input string              // The complete source code being scanned
+	file  sqldocument.FileRef // Reference to the source file for error reporting
 
-	startIndex int // start of this item
-	curIndex   int // current position of the Scanner
-	tokenType  TokenType
+	startIndex int                   // Byte index where current token starts
+	curIndex   int                   // Current byte position in Input
+	tokenType  sqldocument.TokenType // Type of the current token
 
-	// NextToken() has a small state machine to implement the rules of batch seperators
-	// using these two states
-	startOfLine         bool // have we seen anything non-whitespace, non-comment since start of line? Only used for BatchSeparatorToken
-	afterBatchSeparator bool // raise an error if we see anything except whitespace and comments after 'go'
+	// Batch separator state machine fields.
+	// The GO batch separator has special rules: it must appear at the start
+	// of a line and nothing except whitespace can follow it on the same line.
+	startOfLine         bool // True if no non-whitespace/comment seen since start of line
+	afterBatchSeparator bool // True if we just saw GO; used to detect malformed separators
 
-	startLine        int
-	stopLine         int
-	indexAtStartLine int // value of `curIndex` after newline char
-	indexAtStopLine  int // value of `curIndex` after newline char
+	startLine        int // Line number (0-indexed) where current token starts
+	stopLine         int // Line number (0-indexed) where current token ends
+	indexAtStartLine int // Byte index at the start of startLine (after newline)
+	indexAtStopLine  int // Byte index at the start of stopLine (after newline)
 
-	reservedWord string // in the event that the token is a ReservedWordToken, this contains the lower-case version
+	reservedWord string // Lowercase version of token if it's a reserved word, empty otherwise
 }
 
-type TokenType int
+// NewScanner creates a new Scanner for the given T-SQL source file and input string.
+// The scanner is positioned before the first token; call NextToken() to advance.
+func NewScanner(path sqldocument.FileRef, input string) *Scanner {
+	return &Scanner{input: input, file: path}
+}
 
-func (s *Scanner) TokenType() TokenType {
+// TokenType returns the type of the current token.
+func (s *Scanner) TokenType() sqldocument.TokenType {
 	return s.tokenType
 }
 
-// Returns a clone of the scanner; this is used to do look-ahead parsing
+func (s *Scanner) SetInput(input []byte) {
+	s.input = string(input)
+}
+
+func (s *Scanner) SetFile(file sqldocument.FileRef) {
+	s.file = file
+}
+
+func (s *Scanner) File() sqldocument.FileRef {
+	return s.file
+}
+
+// Clone returns a copy of the scanner at its current position.
+// This is used for look-ahead parsing where we need to tentatively
+// scan tokens without committing to consuming them.
 func (s Scanner) Clone() *Scanner {
 	result := new(Scanner)
 	*result = s
 	return result
 }
 
+// Token returns the text of the current token as a substring of Input.
 func (s *Scanner) Token() string {
 	return s.input[s.startIndex:s.curIndex]
 }
 
+// TokenLower returns the current token text converted to lowercase.
+// Useful for case-insensitive keyword matching.
 func (s *Scanner) TokenLower() string {
 	return strings.ToLower(s.Token())
 }
 
+// ReservedWord returns the lowercase reserved word if the current token
+// is a ReservedWordToken, or an empty string otherwise.
 func (s *Scanner) ReservedWord() string {
 	return s.reservedWord
 }
 
-func (s *Scanner) Start() Pos {
-	return Pos{
+// Start returns the position where the current token begins.
+// Line and column are 1-indexed.
+func (s *Scanner) Start() sqldocument.Pos {
+	return sqldocument.Pos{
 		Line: s.startLine + 1,
 		Col:  s.startIndex - s.indexAtStartLine + 1,
 		File: s.file,
 	}
 }
 
-func (s *Scanner) Stop() Pos {
-	return Pos{
+// Stop returns the position where the current token ends.
+// Line and column are 1-indexed.
+func (s *Scanner) Stop() sqldocument.Pos {
+	return sqldocument.Pos{
 		Line: s.stopLine + 1,
 		Col:  s.curIndex - s.indexAtStopLine + 1,
 		File: s.file,
 	}
 }
 
+// bumpLine increments the line counter and records the byte position
+// after the newline character. The offset parameter is the position
+// of the newline within the current scan operation.
 func (s *Scanner) bumpLine(offset int) {
 	s.stopLine++
 	s.indexAtStopLine = s.curIndex + offset + 1
 }
 
+// SkipWhitespaceComments advances past any whitespace and comment tokens.
+// Stops when a non-whitespace, non-comment token is encountered.
 func (s *Scanner) SkipWhitespaceComments() {
 	for {
 		switch s.TokenType() {
-		case WhitespaceToken, MultilineCommentToken, SinglelineCommentToken:
+		case sqldocument.WhitespaceToken, sqldocument.MultilineCommentToken, sqldocument.SinglelineCommentToken:
 		default:
 			return
 		}
@@ -97,10 +135,13 @@ func (s *Scanner) SkipWhitespaceComments() {
 	}
 }
 
+// SkipWhitespace advances past any whitespace tokens.
+// Stops when a non-whitespace token is encountered.
+// Unlike SkipWhitespaceComments, this preserves comments.
 func (s *Scanner) SkipWhitespace() {
 	for {
 		switch s.TokenType() {
-		case WhitespaceToken:
+		case sqldocument.WhitespaceToken:
 		default:
 			return
 		}
@@ -108,21 +149,35 @@ func (s *Scanner) SkipWhitespace() {
 	}
 }
 
-func (s *Scanner) NextNonWhitespaceToken() TokenType {
+// NextNonWhitespaceToken advances to the next token and then skips
+// any whitespace, returning the type of the first non-whitespace token.
+func (s *Scanner) NextNonWhitespaceToken() sqldocument.TokenType {
 	s.NextToken()
 	s.SkipWhitespace()
 	return s.TokenType()
 }
 
-func (s *Scanner) NextNonWhitespaceCommentToken() TokenType {
+// NextNonWhitespaceCommentToken advances to the next token and then skips
+// any whitespace and comments, returning the type of the first significant token.
+func (s *Scanner) NextNonWhitespaceCommentToken() sqldocument.TokenType {
 	s.NextToken()
 	s.SkipWhitespaceComments()
 	return s.TokenType()
 }
 
-// NextToken scans the NextToken token and advances the Scanner's position to
-// after the token
-func (s *Scanner) NextToken() TokenType {
+// NextToken scans the next token and advances the scanner's position.
+//
+// This method wraps the raw tokenization with batch separator handling.
+// The GO batch separator has special rules in T-SQL:
+//   - It must appear at the start of a line (only whitespace/comments before it)
+//   - Nothing except whitespace may follow it on the same line
+//   - It is not processed inside [names], 'strings', or /*comments*/
+//
+// If GO is followed by non-whitespace on the same line, subsequent tokens
+// are returned as MalformedBatchSeparatorToken until end of line.
+//
+// Returns the TokenType of the scanned token.
+func (s *Scanner) NextToken() sqldocument.TokenType {
 	// handle startOfLine flag here; this is used to parse the 'go' batch separator
 	s.tokenType = s.nextToken()
 
@@ -139,12 +194,12 @@ func (s *Scanner) NextToken() TokenType {
 	// on the same line as 'go'. And doing so will not turn it into a literal,
 	// but instead return MalformedBatchSeparatorToken
 
-	if s.startOfLine && s.tokenType == UnquotedIdentifierToken && s.TokenLower() == "go" {
-		s.tokenType = BatchSeparatorToken
+	if s.startOfLine && s.tokenType == sqldocument.UnquotedIdentifierToken && s.TokenLower() == "go" {
+		s.tokenType = sqldocument.BatchSeparatorToken
 		s.afterBatchSeparator = true
-	} else if s.afterBatchSeparator && s.tokenType != WhitespaceToken && s.tokenType != EOFToken {
-		s.tokenType = MalformedBatchSeparatorToken
-	} else if s.tokenType == WhitespaceToken {
+	} else if s.afterBatchSeparator && s.tokenType != sqldocument.WhitespaceToken && s.tokenType != sqldocument.EOFToken {
+		s.tokenType = sqldocument.MalformedBatchSeparatorToken
+	} else if s.tokenType == sqldocument.WhitespaceToken {
 		// If we just saw the whitespace token that bumped the linecount,
 		// we are at the "start of line", even if this contains some space after the \n:
 		if s.stopLine > s.startLine {
@@ -155,10 +210,11 @@ func (s *Scanner) NextToken() TokenType {
 	} else {
 		s.startOfLine = false
 	}
+
 	return s.tokenType
 }
 
-func (s *Scanner) nextToken() TokenType {
+func (s *Scanner) nextToken() sqldocument.TokenType {
 	s.startIndex = s.curIndex
 	s.reservedWord = ""
 	s.startLine = s.stopLine
@@ -168,29 +224,29 @@ func (s *Scanner) nextToken() TokenType {
 	// First, decisions that can be made after one character:
 	switch {
 	case r == utf8.RuneError && w == 0:
-		return EOFToken
+		return sqldocument.EOFToken
 	case r == utf8.RuneError && w == -1:
 		// not UTF-8, we can't really proceed so not advancing Scanner,
 		// caller should take care to always exit..
-		return NonUTF8ErrorToken
+		return sqldocument.NonUTF8ErrorToken
 	case r == '(':
 		s.curIndex += w
-		return LeftParenToken
+		return sqldocument.LeftParenToken
 	case r == ')':
 		s.curIndex += w
-		return RightParenToken
+		return sqldocument.RightParenToken
 	case r == ';':
 		s.curIndex += w
-		return SemicolonToken
+		return sqldocument.SemicolonToken
 	case r == '=':
 		s.curIndex += w
-		return EqualToken
+		return sqldocument.EqualToken
 	case r == ',':
 		s.curIndex += w
-		return CommaToken
+		return sqldocument.CommaToken
 	case r == '.':
 		s.curIndex += w
-		return DotToken
+		return sqldocument.DotToken
 	case r == '\'':
 		s.curIndex += w
 		return s.scanStringLiteral(VarcharLiteralToken)
@@ -213,14 +269,15 @@ func (s *Scanner) nextToken() TokenType {
 		s.curIndex += w
 		s.scanIdentifier()
 		if r == '@' {
-			return VariableIdentifierToken
+			return sqldocument.VariableIdentifierToken
 		} else {
 			rw := strings.ToLower(s.Token())
-			if _, ok := reservedWords[rw]; ok {
+			_, ok := reservedWords[rw]
+			if ok {
 				s.reservedWord = rw
-				return ReservedWordToken
+				return sqldocument.ReservedWordToken
 			} else {
-				return UnquotedIdentifierToken
+				return sqldocument.UnquotedIdentifierToken
 			}
 		}
 	}
@@ -238,11 +295,12 @@ func (s *Scanner) nextToken() TokenType {
 		// no, it is instead an identifier starting with N...
 		s.scanIdentifier()
 		rw := strings.ToLower(s.Token())
-		if _, ok := reservedWords[rw]; ok {
+		_, ok := reservedWords[rw]
+		if ok {
 			s.reservedWord = rw
-			return ReservedWordToken
+			return sqldocument.ReservedWordToken
 		} else {
-			return UnquotedIdentifierToken
+			return sqldocument.UnquotedIdentifierToken
 		}
 	case r == '/' && r2 == '*':
 		s.curIndex += w + w2
@@ -255,28 +313,28 @@ func (s *Scanner) nextToken() TokenType {
 	}
 
 	s.curIndex += w
-	return OtherToken
+	return sqldocument.OtherToken
 }
 
 // scanMultilineComment assumes one has advanced over '/*'
-func (s *Scanner) scanMultilineComment() TokenType {
+func (s *Scanner) scanMultilineComment() sqldocument.TokenType {
 	prevWasStar := false
 	for i, r := range s.input[s.curIndex:] {
 		if r == '*' {
 			prevWasStar = true
 		} else if prevWasStar && r == '/' {
 			s.curIndex += i + 1
-			return MultilineCommentToken
+			return sqldocument.MultilineCommentToken
 		} else if r == '\n' {
 			s.bumpLine(i)
 		}
 	}
 	s.curIndex = len(s.input)
-	return MultilineCommentToken
+	return sqldocument.MultilineCommentToken
 }
 
 // scanSinglelineComment assumes one has advanced over --
-func (s *Scanner) scanSinglelineComment() TokenType {
+func (s *Scanner) scanSinglelineComment() sqldocument.TokenType {
 	isPragma := strings.HasPrefix(s.input[s.curIndex:], "sqlcode:")
 	end := strings.Index(s.input[s.curIndex:], "\n")
 	if end == -1 {
@@ -288,20 +346,20 @@ func (s *Scanner) scanSinglelineComment() TokenType {
 		s.curIndex += end
 	}
 	if isPragma {
-		return PragmaToken
+		return sqldocument.PragmaToken
 	} else {
-		return SinglelineCommentToken
+		return sqldocument.SinglelineCommentToken
 	}
 }
 
 // scanStringLiteral assumes one has scanned ' or N' (depending on param);
 // then scans until the end of the string
-func (s *Scanner) scanStringLiteral(tokenType TokenType) TokenType {
+func (s *Scanner) scanStringLiteral(tokenType sqldocument.TokenType) sqldocument.TokenType {
 	return s.scanUntilSingleDoubleEscapes('\'', tokenType, UnterminatedVarcharLiteralErrorToken)
 }
 
-func (s *Scanner) scanQuotedIdentifier() TokenType {
-	return s.scanUntilSingleDoubleEscapes(']', QuotedIdentifierToken, UnterminatedQuotedIdentifierErrorToken)
+func (s *Scanner) scanQuotedIdentifier() sqldocument.TokenType {
+	return s.scanUntilSingleDoubleEscapes(']', sqldocument.QuotedIdentifierToken, UnterminatedQuotedIdentifierErrorToken)
 }
 
 // scanIdentifier assumes first character of an identifier has been identified,
@@ -316,8 +374,12 @@ func (s *Scanner) scanIdentifier() {
 	s.curIndex = len(s.input)
 }
 
-// DRY helper to handle both '' and ]] escapes
-func (s *Scanner) scanUntilSingleDoubleEscapes(endmarker rune, tokenType TokenType, unterminatedTokenType TokenType) TokenType {
+// DRY helper to handle both ” and ]] escapes
+func (s *Scanner) scanUntilSingleDoubleEscapes(
+	endmarker rune,
+	tokenType sqldocument.TokenType,
+	unterminatedTokenType sqldocument.TokenType,
+) sqldocument.TokenType {
 	skipnext := false
 	for i, r := range s.input[s.curIndex:] {
 		if skipnext {
@@ -345,7 +407,7 @@ func (s *Scanner) scanUntilSingleDoubleEscapes(endmarker rune, tokenType TokenTy
 
 var numberRegexp = regexp.MustCompile(`^[+-]?\d+\.?\d*([eE][+-]?\d*)?`)
 
-func (s *Scanner) scanNumber() TokenType {
+func (s *Scanner) scanNumber() sqldocument.TokenType {
 	// T-SQL seems to scan a number until the
 	// end and then allowing a literal to start without whitespace or other things
 	// in between...
@@ -357,24 +419,25 @@ func (s *Scanner) scanNumber() TokenType {
 		panic("should always have a match according to regex and conditions in caller")
 	}
 	s.curIndex += loc[1]
-	return NumberToken
+	return sqldocument.NumberToken
 }
 
-func (s *Scanner) scanWhitespace() TokenType {
+func (s *Scanner) scanWhitespace() sqldocument.TokenType {
 	for i, r := range s.input[s.curIndex:] {
 		if r == '\n' {
 			s.bumpLine(i)
 		}
 		if !unicode.IsSpace(r) {
 			s.curIndex += i
-			return WhitespaceToken
+			return sqldocument.WhitespaceToken
 		}
 	}
 	// eof
 	s.curIndex = len(s.input)
-	return WhitespaceToken
+	return sqldocument.WhitespaceToken
 }
 
+// tsql (mssql) reservered words
 var reservedWords = map[string]struct{}{
 	"add":                            struct{}{},
 	"external":                       struct{}{},
