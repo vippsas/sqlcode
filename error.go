@@ -3,9 +3,10 @@ package sqlcode
 import (
 	"bytes"
 	"fmt"
-	mssql "github.com/denisenkom/go-mssqldb"
-	"github.com/vippsas/sqlcode/sqlparser"
 	"strings"
+
+	mssql "github.com/microsoft/go-mssqldb"
+	"github.com/vippsas/sqlcode/sqlparser"
 )
 
 type SQLUserError struct {
