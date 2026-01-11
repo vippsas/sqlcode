@@ -10,8 +10,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/vippsas/sqlcode/sqlparser"
-	"github.com/vippsas/sqlcode/sqlparser/sqldocument"
+	"github.com/vippsas/sqlcode/v2/sqlparser"
+	"github.com/vippsas/sqlcode/v2/sqlparser/sqldocument"
 )
 
 func SchemaSuffixFromHash(doc sqldocument.Document) string {

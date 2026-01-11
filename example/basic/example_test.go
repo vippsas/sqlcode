@@ -11,7 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/vippsas/sqlcode/sqltest"
+	"github.com/vippsas/sqlcode/v2/sqltest"
 )
 
 func TestPreprocess(t *testing.T) {

@@ -13,8 +13,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/vippsas/sqlcode/sqlparser/mssql"
-	"github.com/vippsas/sqlcode/sqlparser/sqldocument"
+	"github.com/vippsas/sqlcode/v2/sqlparser/mssql"
+	"github.com/vippsas/sqlcode/v2/sqlparser/sqldocument"
 )
 
 var (

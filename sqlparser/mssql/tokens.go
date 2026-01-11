@@ -1,6 +1,6 @@
 package mssql
 
-import "github.com/vippsas/sqlcode/sqlparser/sqldocument"
+import "github.com/vippsas/sqlcode/v2/sqlparser/sqldocument"
 
 // T-SQL specific tokens (range 1000-1999)
 //

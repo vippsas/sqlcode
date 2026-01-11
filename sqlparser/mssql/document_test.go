@@ -7,7 +7,7 @@ import (
 	mssql "github.com/microsoft/go-mssqldb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/vippsas/sqlcode/sqlparser/sqldocument"
+	"github.com/vippsas/sqlcode/v2/sqlparser/sqldocument"
 )
 
 func ParseString(t *testing.T, file, input string) *TSqlDocument {
