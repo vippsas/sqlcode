@@ -1,10 +1,11 @@
 package main
 
 import (
-	"github.com/vippsas/sqlcode/cli/cmd"
 	"math/rand"
 	"os"
 	"time"
+
+	"github.com/vippsas/sqlcode/v2/cli/cmd"
 )
 
 func main() {
