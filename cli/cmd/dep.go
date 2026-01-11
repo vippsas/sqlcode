@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/vippsas/sqlcode"
+	"github.com/vippsas/sqlcode/v2"
 )
 
 func dep(partialParseResults bool) (d sqlcode.Deployable, err error) {

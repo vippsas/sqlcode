@@ -6,7 +6,7 @@ import (
 
 	mssql "github.com/microsoft/go-mssqldb"
 	"github.com/spf13/cobra"
-	"github.com/vippsas/sqlcode"
+	"github.com/vippsas/sqlcode/v2"
 )
 
 var (

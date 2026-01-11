@@ -3,7 +3,7 @@ package sqltest
 import (
 	"embed"
 
-	"github.com/vippsas/sqlcode"
+	"github.com/vippsas/sqlcode/v2"
 )
 
 //go:embed *.sql
