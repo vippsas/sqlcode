@@ -14,12 +14,13 @@ import (
 	"strings"
 
 	"github.com/vippsas/sqlcode/v2/sqlparser/mssql"
+	"github.com/vippsas/sqlcode/v2/sqlparser/pgsql"
 	"github.com/vippsas/sqlcode/v2/sqlparser/sqldocument"
 )
 
 var (
 	templateRoutineName    string   = "\ndeclare @RoutineName nvarchar(128)\nset @RoutineName = '%s'\n"
-	supportedSqlExtensions []string = []string{".sql"}
+	supportedSqlExtensions []string = []string{".sql", ".pgsql"}
 	// consider something a "sqlcode source file" if it contains [code]
 	// or a --sqlcode: header
 	isSqlCodeRegex = regexp.MustCompile(`^--sqlcode:|\[code\]`)
@@ -30,6 +31,8 @@ func NewDocumentFromExtension(extension string) sqldocument.Document {
 	switch extension {
 	case ".sql", "sql":
 		return &mssql.TSqlDocument{}
+	case ".pgsql", "pgsql":
+		return &pgsql.PGSqlDocument{}
 	default:
 		panic("unhandled document type: " + extension)
 	}

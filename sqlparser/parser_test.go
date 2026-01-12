@@ -33,6 +33,28 @@ create function [code].Func1() returns int as begin return 1 end
 		assert.Len(t, doc.Declares(), 1)
 	})
 
+	t.Run("basic parsing of psql files", func(t *testing.T) {
+		fsys := fstest.MapFS{
+			"test1.psql": &fstest.MapFile{
+				Data: []byte(`
+create procedure [code].test()
+language plpgsql
+as $$
+begin
+    perform 1;
+end;
+$$;
+`),
+			},
+		}
+
+		filenames, doc, err := ParseFilesystems([]fs.FS{fsys}, nil)
+		require.NoError(t, err)
+		assert.Len(t, filenames, 1)
+		assert.Len(t, doc.Creates(), 1)
+		assert.Len(t, doc.Declares(), 0)
+	})
+
 	t.Run("filters by include tags", func(t *testing.T) {
 		fsys := fstest.MapFS{
 			"included.sql": &fstest.MapFile{

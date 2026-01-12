@@ -25,10 +25,9 @@ var TSQLStatementTokens = []string{"create", "declare", "go"}
 // The first batch may contain DECLARE statements for constants.
 // Subsequent batches contain CREATE statements for database objects.
 type TSqlDocument struct {
-	pragmaIncludeIf []string
-	creates         []sqldocument.Create
-	declares        []sqldocument.Declare
-	errors          []sqldocument.Error
+	creates  []sqldocument.Create
+	declares []sqldocument.Declare
+	errors   []sqldocument.Error
 
 	sqldocument.Pragma
 }
