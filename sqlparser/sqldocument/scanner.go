@@ -17,9 +17,6 @@ type Scanner interface {
 	// Token returns the text of the current token.
 	Token() string
 
-	// File returns a reference to the source file being scanned.
-	File() FileRef
-
 	// TokenLower returns the current token text converted to lowercase.
 	TokenLower() string
 
