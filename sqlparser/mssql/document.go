@@ -45,9 +45,7 @@ type TSqlDocument struct {
 // Errors are accumulated in the document rather than stopping parsing,
 // allowing partial results even with syntax errors.
 func (d *TSqlDocument) Parse(input []byte, file sqldocument.FileRef) error {
-	s := &Scanner{}
-	s.SetInput(input)
-	s.SetFile(file)
+	s := NewScanner(file, string(input))
 
 	// Functions typically consume *after* the keyword that triggered their
 	// invoication; e.g. parseCreate parses from first non-whitespace-token
@@ -380,10 +378,11 @@ func (d *TSqlDocument) parseCreate(s sqldocument.Scanner, createCountInBatch int
 
 	sqldocument.NextTokenCopyingWhitespace(s, &result.Body)
 
+	rawType := strings.ToLower(s.Token())
 	createType, exists := sqldocument.CreateTypeMapping[strings.ToLower(s.Token())]
 
 	if !exists {
-		d.addError(s, fmt.Sprintf("sqlcode only supports creating procedures, functions or types; not `%s`", createType))
+		d.addError(s, fmt.Sprintf("sqlcode only supports creating procedures, functions or types; not `%s`", rawType))
 		sqldocument.RecoverToNextStatementCopying(s, &result.Body, TSQLStatementTokens)
 		return
 	}
@@ -400,7 +399,7 @@ func (d *TSqlDocument) parseCreate(s sqldocument.Scanner, createCountInBatch int
 
 	// Insist on [code].
 	if s.TokenType() != sqldocument.QuotedIdentifierToken || s.Token() != "[code]" {
-		d.addError(s, fmt.Sprintf("create %s must be followed by [code].", result.CreateType))
+		d.addError(s, fmt.Sprintf("create %s must be followed by [code].", rawType))
 		sqldocument.RecoverToNextStatementCopying(s, &result.Body, TSQLStatementTokens)
 		return
 	}

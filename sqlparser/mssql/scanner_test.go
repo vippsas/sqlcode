@@ -467,7 +467,6 @@ func TestScanner_SkipMethods(t *testing.T) {
 
 	s.NextToken() // SELECT
 	s.NextToken() // whitespace
-
 	// SkipWhitespace should stop at comment
 	s.SkipWhitespace()
 	if s.TokenType() != sqldocument.MultilineCommentToken {
