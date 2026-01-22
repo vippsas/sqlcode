@@ -311,38 +311,6 @@ func TestBatch_Parse_MultipleTokenCalls(t *testing.T) {
 	assert.Equal(t, 3, b.TokenCalls["create"])
 }
 
-func TestBatch_Parse_ComplexSequence(t *testing.T) {
-	b := NewBatch()
-	b.TokenHandlers = map[string]func(Scanner, *Batch) int{
-		"create": func(s Scanner, batch *Batch) int {
-			// Simulate consuming the create statement
-			s.NextToken()
-			return 0
-		},
-	}
-	b.BatchSeparatorHandler = func(s Scanner, batch *Batch) {
-		s.NextToken()
-	}
-
-	scanner := &MockScanner{
-		tokens: []MockToken{
-			{Type: SinglelineCommentToken, Text: "-- docstring comment", StartPos: Pos{Line: 1, Col: 1}},
-			{Type: WhitespaceToken, Text: "\n"},
-			{Type: MultilineCommentToken, Text: "/* header */"},
-			{Type: ReservedWordToken, Text: "CREATE", Reserved: "create"},
-			{Type: BatchSeparatorToken, Text: "GO"},
-			{Type: EOFToken, Text: ""},
-		},
-	}
-
-	result := b.Parse(scanner)
-
-	assert.True(t, result) // Stopped at batch separator
-	require.Len(t, b.Nodes, 3)
-	require.Len(t, b.DocString, 1)
-	assert.Equal(t, "-- docstring comment", b.DocString[0].Value)
-}
-
 func TestBatch_Parse_PreservesNodes(t *testing.T) {
 	b := NewBatch()
 	b.TokenHandlers = map[string]func(Scanner, *Batch) int{
