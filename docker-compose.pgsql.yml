@@ -17,6 +17,8 @@ services:
       dockerfile: dockerfile.test
     networks:
       - postgres
+    volumes:
+      - $PWD:/sqlcode
     environment:
       SQLSERVER_DSN: postgresql://sa:VippsPw1@postgres:5432/master?sslmode=disable
       GODEBUG: "x509negativeserial=1"
