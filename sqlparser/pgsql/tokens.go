@@ -28,15 +28,3 @@ const (
 	UnterminatedStringLiteralErrorToken
 	UnterminatedQuotedIdentifierErrorToken
 )
-
-// ToCommonToken maps PostgreSQL specific tokens to their common equivalents.
-func ToCommonToken(tt sqldocument.TokenType) sqldocument.TokenType {
-	switch tt {
-	case StringLiteralToken, DollarQuotedStringToken, BitStringLiteralToken, HexStringLiteralToken:
-		return sqldocument.StringLiteralToken
-	case UnterminatedStringLiteralErrorToken, UnterminatedQuotedIdentifierErrorToken:
-		return sqldocument.UnterminatedStringErrorToken
-	default:
-		return tt
-	}
-}

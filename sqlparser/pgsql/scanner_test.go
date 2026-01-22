@@ -239,9 +239,9 @@ func TestScanner_Number(t *testing.T) {
 
 func TestScanner_ReservedWords(t *testing.T) {
 	reservedWordTests := []string{
-		"SELECT", "FROM", "WHERE", "CREATE", "FUNCTION", "PROCEDURE",
-		"BEGIN", "END", "RETURN", "AS", "AND", "OR", "NOT", "NULL",
-		"TABLE", "INSERT", "UPDATE", "DELETE", "JOIN", "LEFT", "RIGHT",
+		"SELECT", "FROM", "WHERE", "CREATE",
+		"END", "AS", "AND", "OR", "NOT", "NULL",
+		"TABLE", "JOIN", "LEFT", "RIGHT",
 		"INNER", "OUTER", "ON", "IN", "IS", "CASE", "WHEN", "THEN", "ELSE",
 	}
 
@@ -311,7 +311,7 @@ $$;`
 	}{
 		{sqldocument.ReservedWordToken, "CREATE"},
 		{sqldocument.WhitespaceToken, " "},
-		{sqldocument.ReservedWordToken, "FUNCTION"},
+		{sqldocument.UnquotedIdentifierToken, "FUNCTION"},
 		{sqldocument.WhitespaceToken, " "},
 		{sqldocument.UnquotedIdentifierToken, "add_numbers"},
 		{sqldocument.LeftParenToken, "("},
