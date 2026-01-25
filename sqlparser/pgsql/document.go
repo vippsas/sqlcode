@@ -1,6 +1,8 @@
 package pgsql
 
-import "github.com/vippsas/sqlcode/v2/sqlparser/sqldocument"
+import (
+	"github.com/vippsas/sqlcode/v2/sqlparser/sqldocument"
+)
 
 type PGSqlDocument struct {
 	creates []sqldocument.Create
@@ -10,7 +12,20 @@ type PGSqlDocument struct {
 }
 
 func (d *PGSqlDocument) Parse(input []byte, file sqldocument.FileRef) error {
+	s := NewScanner(file, string(input))
+	s.NextNonWhitespaceToken()
+	err := d.ParsePragmas(s)
+	if err != nil {
+		d.addError(s, err.Error())
+	}
 	return nil
+}
+
+func (d *PGSqlDocument) addError(s sqldocument.Scanner, message string) {
+	d.errors = append(d.errors, sqldocument.Error{
+		Pos:     s.Start(),
+		Message: message,
+	})
 }
 
 func (d PGSqlDocument) Empty() bool {

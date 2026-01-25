@@ -10,9 +10,9 @@ import (
 	"github.com/vippsas/sqlcode/v2/sqlparser/sqldocument"
 )
 
-// Scanner is a lexical scanner for T-SQL source code.
+// MSSqlScanner is a lexical scanner for T-SQL source code.
 //
-// Unlike traditional lexer/parser architectures with a token stream, Scanner
+// Unlike traditional lexer/parser architectures with a token stream, MSSqlScanner
 // is used directly by the recursive descent parser as a cursor into the input
 // buffer. It provides utility methods for tokenization and position tracking.
 //
@@ -23,19 +23,19 @@ import (
 //   - Batch separators (GO)
 //   - Reserved words
 //   - Variables (@identifier)
-type Scanner struct {
+type MSSqlScanner struct {
 	sqldocument.TokenScanner
 
 	afterBatchSeparator bool // True if we just saw GO; used to detect malformed separators
 	startOfLine         bool // True if no non-whitespace/comment seen since start of line
 }
 
-var _ sqldocument.Scanner = (*Scanner)(nil)
+var _ sqldocument.Scanner = (*MSSqlScanner)(nil)
 
 // NewScanner creates a new Scanner for the given T-SQL source file and input string.
 // The scanner is positioned before the first token; call NextToken() to advance.
-func NewScanner(file sqldocument.FileRef, input string) *Scanner {
-	s := &Scanner{
+func NewScanner(file sqldocument.FileRef, input string) *MSSqlScanner {
+	s := &MSSqlScanner{
 		TokenScanner: sqldocument.TokenScanner{
 			ScannerInput: sqldocument.ScannerInput{},
 		},
@@ -47,19 +47,19 @@ func NewScanner(file sqldocument.FileRef, input string) *Scanner {
 	return s
 }
 
-func (s *Scanner) SetInput(input []byte) {
+func (s *MSSqlScanner) SetInput(input []byte) {
 	s.ScannerInput.SetInput(input)
 }
 
-func (s *Scanner) SetFile(file sqldocument.FileRef) {
+func (s *MSSqlScanner) SetFile(file sqldocument.FileRef) {
 	s.ScannerInput.SetFile(file)
 }
 
 // Clone returns a copy of the scanner at its current position.
 // This is used for look-ahead parsing where we need to tentatively
 // scan tokens without committing to consuming them.
-func (s Scanner) Clone() *Scanner {
-	result := new(Scanner)
+func (s MSSqlScanner) Clone() *MSSqlScanner {
+	result := new(MSSqlScanner)
 	*result = s
 	return result
 }
@@ -76,7 +76,7 @@ func (s Scanner) Clone() *Scanner {
 // are returned as MalformedBatchSeparatorToken until end of line.
 //
 // Returns the TokenType of the scanned token.
-func (s *Scanner) NextToken() sqldocument.TokenType {
+func (s *MSSqlScanner) NextToken() sqldocument.TokenType {
 	// handle startOfLine flag here; this is used to parse the 'go' batch separator
 	token := s.nextToken()
 	s.SetToken(token)
@@ -114,7 +114,7 @@ func (s *Scanner) NextToken() sqldocument.TokenType {
 }
 
 // mssql17
-func (s *Scanner) nextToken() sqldocument.TokenType {
+func (s *MSSqlScanner) nextToken() sqldocument.TokenType {
 	s.IncIndexes()
 	r, w := s.TokenRune(0)
 
@@ -214,17 +214,17 @@ func (s *Scanner) nextToken() sqldocument.TokenType {
 
 // scanStringLiteral assumes one has scanned ' or N' (depending on param);
 // then scans until the end of the string
-func (s *Scanner) scanStringLiteral(tokenType sqldocument.TokenType) sqldocument.TokenType {
+func (s *MSSqlScanner) scanStringLiteral(tokenType sqldocument.TokenType) sqldocument.TokenType {
 	return s.scanUntilSingleDoubleEscapes('\'', tokenType, UnterminatedVarcharLiteralErrorToken)
 }
 
-func (s *Scanner) scanQuotedIdentifier() sqldocument.TokenType {
+func (s *MSSqlScanner) scanQuotedIdentifier() sqldocument.TokenType {
 	return s.scanUntilSingleDoubleEscapes(']', sqldocument.QuotedIdentifierToken, UnterminatedQuotedIdentifierErrorToken)
 }
 
 // scanIdentifier assumes first character of an identifier has been identified,
 // and scans to the end
-func (s *Scanner) scanIdentifier() {
+func (s *MSSqlScanner) scanIdentifier() {
 	for i, r := range s.TokenChar() {
 		if !(xid.Continue(r) || r == '$' || r == '#' || r == '@' || unicode.Is(unicode.Cf, r)) {
 			s.IncCurIndex(i)
@@ -235,7 +235,7 @@ func (s *Scanner) scanIdentifier() {
 }
 
 // DRY helper to handle both ” and ]] escapes
-func (s *Scanner) scanUntilSingleDoubleEscapes(
+func (s *MSSqlScanner) scanUntilSingleDoubleEscapes(
 	endmarker rune,
 	tokenType sqldocument.TokenType,
 	unterminatedTokenType sqldocument.TokenType,
@@ -267,7 +267,7 @@ func (s *Scanner) scanUntilSingleDoubleEscapes(
 
 var numberRegexp = regexp.MustCompile(`^[+-]?\d+\.?\d*([eE][+-]?\d*)?`)
 
-func (s *Scanner) scanNumber() sqldocument.TokenType {
+func (s *MSSqlScanner) scanNumber() sqldocument.TokenType {
 	// T-SQL seems to scan a number until the
 	// end and then allowing a literal to start without whitespace or other things
 	// in between...

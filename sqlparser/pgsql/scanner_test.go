@@ -8,6 +8,59 @@ import (
 	"github.com/vippsas/sqlcode/v2/sqlparser/sqldocument"
 )
 
+func TestScanner_Comments(t *testing.T) {
+	tests := []struct {
+		name          string
+		input         string
+		expectedType  sqldocument.TokenType
+		expectedValue string
+	}{
+		{
+			name:          "single line comment",
+			input:         "-- this is a comment",
+			expectedType:  sqldocument.SinglelineCommentToken,
+			expectedValue: "-- this is a comment",
+		},
+		{
+			name:          "single line comment before newline",
+			input:         "-- comment\ncode",
+			expectedType:  sqldocument.SinglelineCommentToken,
+			expectedValue: "-- comment",
+		},
+		{
+			name:          "multiline comment",
+			input:         "/* this is\na multiline\ncomment */",
+			expectedType:  sqldocument.MultilineCommentToken,
+			expectedValue: "/* this is\na multiline\ncomment */",
+		},
+		{
+			name:          "multiline comment with asterisks",
+			input:         "/* * * * */",
+			expectedType:  sqldocument.MultilineCommentToken,
+			expectedValue: "/* * * * */",
+		},
+		{
+			name:          "pragma comment",
+			input:         "--sqlcode:include-if foo",
+			expectedType:  sqldocument.PragmaToken,
+			expectedValue: "--sqlcode:include-if foo",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := NewScanner("test.pgsql", tt.input)
+			s.NextToken()
+			if s.TokenType() != tt.expectedType {
+				t.Errorf("expected type %v, got %v", tt.expectedType, s.TokenType())
+			}
+			if s.Token() != tt.expectedValue {
+				t.Errorf("expected value %q, got %q", tt.expectedValue, s.Token())
+			}
+		})
+	}
+}
+
 func TestScanner_BasicTokens(t *testing.T) {
 	tests := []struct {
 		name     string
