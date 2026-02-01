@@ -32,6 +32,8 @@ type TSqlDocument struct {
 	sqldocument.Pragma
 }
 
+var _ sqldocument.Document = (*TSqlDocument)(nil)
+
 // Parse processes a T-SQL source file from the given input.
 //
 // Parsing proceeds in phases:

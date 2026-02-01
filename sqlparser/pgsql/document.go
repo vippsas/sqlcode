@@ -11,9 +11,12 @@ type PGSqlDocument struct {
 	sqldocument.Pragma
 }
 
+var _ sqldocument.Document = (*PGSqlDocument)(nil)
+
 func (d *PGSqlDocument) Parse(input []byte, file sqldocument.FileRef) error {
 	s := NewScanner(file, string(input))
 	s.NextNonWhitespaceToken()
+
 	err := d.ParsePragmas(s)
 	if err != nil {
 		d.addError(s, err.Error())

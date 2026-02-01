@@ -1,19 +1,19 @@
 package pgsql
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
 	"github.com/smasher164/xid"
+	"github.com/vippsas/sqlcode/v2/sqlparser/internal/utils"
 	"github.com/vippsas/sqlcode/v2/sqlparser/sqldocument"
 )
 
-// Scanner is a lexical scanner for PostgreSQL 17.
+// PGSqlScanner is a lexical scanner for PostgreSQL 17.
 //
-// Unlike traditional lexer/parser architectures with a token stream, Scanner
+// Unlike traditional lexer/parser architectures with a token stream, PGSqlScanner
 // is used directly by the recursive descent parser as a cursor into the input
 // buffer. It provides utility methods for tokenization and position tracking.
 //
@@ -24,52 +24,56 @@ import (
 //   - Single-line (--) and multi-line (/* */) comments
 //   - Reserved words
 //   - Positional parameters ($1, $2, etc.)
-type Scanner struct {
+type PGSqlScanner struct {
 	sqldocument.TokenScanner
+
+	nextTokenCall int
 }
 
-var _ sqldocument.Scanner = (*Scanner)(nil)
+var _ sqldocument.Scanner = (*PGSqlScanner)(nil)
 
 // NewScanner creates a new Scanner for the given PostgreSQL source file and input string.
 // The scanner is positioned before the first token; call NextToken() to advance.
-func NewScanner(file sqldocument.FileRef, input string) *Scanner {
-	s := &Scanner{
+func NewScanner(file sqldocument.FileRef, input string) *PGSqlScanner {
+	s := &PGSqlScanner{
 		TokenScanner: sqldocument.TokenScanner{
 			ScannerInput: sqldocument.ScannerInput{},
 		},
 	}
 	s.SetFile(file)
 	s.SetInput([]byte(input))
-	s.TokenScanner.NextToken = s.nextToken
+	s.TokenScanner.NextToken = s.NextToken
 	return s
 }
 
-func (s *Scanner) SetInput(input []byte) {
+func (s *PGSqlScanner) SetInput(input []byte) {
 	s.ScannerInput.SetInput(input)
 }
 
-func (s *Scanner) SetFile(file sqldocument.FileRef) {
+func (s *PGSqlScanner) SetFile(file sqldocument.FileRef) {
 	s.ScannerInput.SetFile(file)
 }
 
 // Clone returns a copy of the scanner at its current position.
-func (s Scanner) Clone() *Scanner {
-	result := new(Scanner)
+func (s PGSqlScanner) Clone() *PGSqlScanner {
+	result := new(PGSqlScanner)
 	*result = s
 	return result
 }
 
 // NextToken scans the next token and advances the scanner's position.
 // Returns the TokenType of the scanned token.
-func (s *Scanner) NextToken() sqldocument.TokenType {
-	token := s.nextToken()
-	fmt.Printf("NextToken: previous:%v next:%v\n", s.Token(), token)
+func (s *PGSqlScanner) NextToken() sqldocument.TokenType {
+	s.nextTokenCall++
+	utils.DPrint("NextToken call=%d\n", s.nextTokenCall)
+	token := s.parseNextToken()
+	utils.DPrint("NextToken[%d]: previous:%v next:%v\n", s.nextTokenCall, s.Token(), token)
 	s.SetToken(token)
 	return s.TokenType()
 }
 
 // nextToken performs the actual tokenization for PostgreSQL syntax.
-func (s *Scanner) nextToken() sqldocument.TokenType {
+func (s *PGSqlScanner) parseNextToken() sqldocument.TokenType {
 	s.IncIndexes()
 	r, w := s.TokenRune(0)
 
@@ -206,7 +210,7 @@ func (s *Scanner) nextToken() sqldocument.TokenType {
 
 // scanStringLiteral scans a standard SQL string literal ('...')
 // with ” as the escape sequence for a single quote.
-func (s *Scanner) scanStringLiteral() sqldocument.TokenType {
+func (s *PGSqlScanner) scanStringLiteral() sqldocument.TokenType {
 	chars := s.TokenChar()
 	for i := 0; i < len(chars); i++ {
 		r, w := utf8.DecodeRuneInString(chars[i:])
@@ -231,7 +235,7 @@ func (s *Scanner) scanStringLiteral() sqldocument.TokenType {
 }
 
 // scanEscapeStringLiteral scans an E'...' string with backslash escapes.
-func (s *Scanner) scanEscapeStringLiteral() sqldocument.TokenType {
+func (s *PGSqlScanner) scanEscapeStringLiteral() sqldocument.TokenType {
 	escaped := false
 	chars := s.TokenChar()
 	for i := 0; i < len(chars); i++ {
@@ -258,7 +262,7 @@ func (s *Scanner) scanEscapeStringLiteral() sqldocument.TokenType {
 }
 
 // scanBitStringLiteral scans a B'...' bit string literal.
-func (s *Scanner) scanBitStringLiteral() sqldocument.TokenType {
+func (s *PGSqlScanner) scanBitStringLiteral() sqldocument.TokenType {
 	chars := s.TokenChar()
 	for i := 0; i < len(chars); i++ {
 		r, w := utf8.DecodeRuneInString(chars[i:])
@@ -272,7 +276,7 @@ func (s *Scanner) scanBitStringLiteral() sqldocument.TokenType {
 }
 
 // scanHexStringLiteral scans an X'...' hex string literal.
-func (s *Scanner) scanHexStringLiteral() sqldocument.TokenType {
+func (s *PGSqlScanner) scanHexStringLiteral() sqldocument.TokenType {
 	chars := s.TokenChar()
 	for i := 0; i < len(chars); i++ {
 		r, w := utf8.DecodeRuneInString(chars[i:])
@@ -286,7 +290,7 @@ func (s *Scanner) scanHexStringLiteral() sqldocument.TokenType {
 }
 
 // scanQuotedIdentifier scans a "..." quoted identifier.
-func (s *Scanner) scanQuotedIdentifier() sqldocument.TokenType {
+func (s *PGSqlScanner) scanQuotedIdentifier() sqldocument.TokenType {
 	chars := s.TokenChar()
 	for i := 0; i < len(chars); i++ {
 		r, w := utf8.DecodeRuneInString(chars[i:])
@@ -310,7 +314,7 @@ func (s *Scanner) scanQuotedIdentifier() sqldocument.TokenType {
 }
 
 // scanDollarToken scans either a dollar-quoted string or a positional parameter.
-func (s *Scanner) scanDollarToken() sqldocument.TokenType {
+func (s *PGSqlScanner) scanDollarToken() sqldocument.TokenType {
 	r, w := s.TokenRune(0)
 	if r != '$' {
 		return sqldocument.OtherToken
@@ -373,7 +377,7 @@ func (s *Scanner) scanDollarToken() sqldocument.TokenType {
 }
 
 // scanIdentifier scans the rest of an identifier after the first character.
-func (s *Scanner) scanIdentifier() {
+func (s *PGSqlScanner) scanIdentifier() {
 	chars := s.TokenChar()
 	for i := 0; i < len(chars); i++ {
 		r, w := utf8.DecodeRuneInString(chars[i:])
@@ -387,7 +391,7 @@ func (s *Scanner) scanIdentifier() {
 }
 
 // classifyIdentifier checks if the current token is a reserved word.
-func (s *Scanner) classifyIdentifier() sqldocument.TokenType {
+func (s *PGSqlScanner) classifyIdentifier() sqldocument.TokenType {
 	word := strings.ToLower(s.Token())
 	if _, ok := reservedWords[word]; ok {
 		s.SetReservedWord(word)
@@ -398,7 +402,7 @@ func (s *Scanner) classifyIdentifier() sqldocument.TokenType {
 
 var numberRegexp = regexp.MustCompile(`^[+-]?\d+\.?\d*([eE][+-]?\d*)?`)
 
-func (s *Scanner) scanNumber() sqldocument.TokenType {
+func (s *PGSqlScanner) scanNumber() sqldocument.TokenType {
 	chars := s.TokenChar()
 	loc := numberRegexp.FindStringIndex(chars)
 	if len(loc) == 0 {

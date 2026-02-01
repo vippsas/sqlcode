@@ -3,6 +3,8 @@ package sqldocument
 import (
 	"fmt"
 	"strings"
+
+	"github.com/vippsas/sqlcode/v2/sqlparser/internal/utils"
 )
 
 type Pragma struct {
@@ -30,7 +32,7 @@ func (d *Pragma) parseSinglePragma(s Scanner) error {
 
 func (d *Pragma) ParsePragmas(s Scanner) error {
 	for s.TokenType() == PragmaToken {
-		fmt.Printf("Parsing pragma: %#q\n", s.Token())
+		utils.DPrint("Parsing pragma: %#q\n", s.Token())
 		err := d.parseSinglePragma(s)
 		if err != nil {
 			return err
