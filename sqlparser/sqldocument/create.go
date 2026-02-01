@@ -3,6 +3,7 @@ package sqldocument
 import (
 	"database/sql/driver"
 	"io"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -122,4 +123,21 @@ func (c Create) DependsOnStrings() (result []string) {
 		result = append(result, x.Value)
 	}
 	return
+}
+
+func (c Create) HasDependsOn(dep PosString) bool {
+	for _, existing := range c.DependsOn {
+		if existing.Value == dep.Value {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Create) AddDependency(dep PosString) {
+	c.DependsOn = append(c.DependsOn, dep)
+
+	sort.Slice(c.DependsOn, func(i, j int) bool {
+		return c.DependsOn[i].Value < c.DependsOn[j].Value
+	})
 }
