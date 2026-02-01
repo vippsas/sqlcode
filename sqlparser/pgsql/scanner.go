@@ -1,6 +1,7 @@
 package pgsql
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"unicode"
@@ -62,6 +63,7 @@ func (s Scanner) Clone() *Scanner {
 // Returns the TokenType of the scanned token.
 func (s *Scanner) NextToken() sqldocument.TokenType {
 	token := s.nextToken()
+	fmt.Printf("NextToken: previous:%v next:%v\n", s.Token(), token)
 	s.SetToken(token)
 	return s.TokenType()
 }

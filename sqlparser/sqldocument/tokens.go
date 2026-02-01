@@ -209,7 +209,6 @@ func (s *TokenScanner) SkipWhitespace() {
 		default:
 			return
 		}
-		fmt.Printf("%#v\n", s)
 		s.NextToken()
 	}
 }
@@ -217,6 +216,7 @@ func (s *TokenScanner) SkipWhitespace() {
 // NextNonWhitespaceToken advances to the next token and then skips
 // any whitespace, returning the type of the first non-whitespace token.
 func (s *TokenScanner) NextNonWhitespaceToken() TokenType {
+	fmt.Printf("NextNonWhitespaceToken called at index %d\n", s.curIndex)
 	s.NextToken()
 	s.SkipWhitespace()
 	return s.TokenType()
@@ -249,6 +249,7 @@ func (s *TokenScanner) ScanMultilineComment() TokenType {
 
 // scanSinglelineComment assumes one has advanced over --
 func (s *TokenScanner) ScanSinglelineComment() TokenType {
+	fmt.Printf("Scanning singleline comment at index %d: %#q\n", s.curIndex, s.input[s.curIndex:])
 	isPragma := strings.HasPrefix(s.input[s.curIndex:], "sqlcode:")
 	end := strings.Index(s.input[s.curIndex:], "\n")
 	if end == -1 {
@@ -260,6 +261,7 @@ func (s *TokenScanner) ScanSinglelineComment() TokenType {
 		s.curIndex += end
 	}
 	if isPragma {
+		fmt.Printf("Found pragma comment: %#q\n", s.input[s.startIndex:s.curIndex])
 		return PragmaToken
 	} else {
 		return SinglelineCommentToken
