@@ -291,6 +291,7 @@ func (doc *TSqlDocument) parseDeclareBatch(s sqldocument.Scanner) (hasMore bool)
 // which affects whether DECLARE statements are allowed.
 func (doc *TSqlDocument) parseBatch(s sqldocument.Scanner, isFirst bool) (hasMore bool) {
 	batch := sqldocument.NewBatch()
+	batch.StatementTokens = TSQLStatementTokens
 	batch.BatchSeparatorHandler = func(s sqldocument.Scanner, b *sqldocument.Batch) {
 		errorEmitted := false
 		for {
