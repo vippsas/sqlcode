@@ -4,6 +4,8 @@ import (
 	"github.com/vippsas/sqlcode/v2/sqlparser/sqldocument"
 )
 
+var PGSqlStatementTokens = []string{"create"}
+
 type PGSqlDocument struct {
 	creates []sqldocument.Create
 	errors  []sqldocument.Error
@@ -21,6 +23,15 @@ func (d *PGSqlDocument) Parse(input []byte, file sqldocument.FileRef) error {
 	if err != nil {
 		d.addError(s, err.Error())
 	}
+
+	batch := sqldocument.NewBatch()
+
+	batch.TokenHandlers = map[string]func(sqldocument.Scanner, *sqldocument.Batch) int_{
+		"create": func(s sqldocument.Scanner, b *sqldocument.Batch) int_ {
+			return 0
+		},
+	}
+
 	return nil
 }
 
