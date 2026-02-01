@@ -2,6 +2,7 @@ package sqldocument
 
 import (
 	"fmt"
+	"strings"
 )
 
 // Batch represents a single SQL batch during parsing.
@@ -50,6 +51,16 @@ type Batch struct {
 
 	// BatchSeparatorHandler is called when a token is encountered.
 	BatchSeparatorHandler func(Scanner, *Batch)
+
+	// called with a quoted identifer is encountered within a create statement
+	QuotedIdentifierHandler func(Scanner, *Create) (PosString, error)
+	QuotedIdentifierPattern string
+
+	CreateHandler  func()
+	DeclareHandler func()
+
+	// List of statement tokens to fallback on
+	StatementTokens []string
 }
 
 func NewBatch() *Batch {
@@ -125,4 +136,183 @@ func (n *Batch) Parse(s Scanner) bool {
 			n.DocString = nil
 		}
 	}
+}
+
+func (n *Batch) ParseCodeSchemaReference(s Scanner, result *Create) (PosString, error) {
+	CopyToken(s, &result.Body)
+	NextTokenCopyingWhitespace(s, &result.Body)
+
+	if s.TokenType() != DotToken {
+		RecoverToNextStatementCopying(s, &result.Body, n.StatementTokens)
+		return PosString{}, fmt.Errorf("%s must be followed by '.'", n.QuotedIdentifierPattern)
+	}
+
+	CopyToken(s, &result.Body)
+	NextTokenCopyingWhitespace(s, &result.Body)
+
+	if n.QuotedIdentifierHandler == nil {
+		panic("QuotedIdentiferHandler must be defined")
+	}
+
+	r, err := n.QuotedIdentifierHandler(s, result)
+	if err != nil {
+		RecoverToNextStatementCopying(s, &result.Body, n.StatementTokens)
+		return r, err
+	} else {
+		NextTokenCopyingWhitespace(s, &result.Body)
+	}
+	return r, nil
+}
+
+// parseCreate parses CREATE PROCEDURE/FUNCTION/TYPE statements.
+//
+// This is the core of the sqlcode batch parser. It:
+//  1. Validates the CREATE type is one we support (procedure/function/type)
+//  2. Extracts the object name from <code>.ObjectName syntax
+//  3. Copies the entire statement body for later emission
+//  4. Tracks dependencies by finding <code>.OtherObject references
+//
+// The parser is intentionally permissive about SQL syntax details,
+// delegating full validation to supported SQL dialects. It focuses on extracting
+// the structural information needed for dependency ordering and code generation.
+func (n *Batch) ParseCreate(s Scanner, result *Create) error {
+	if s.ReservedWord() != "create" {
+		panic("illegal use by caller")
+	}
+
+	CopyToken(s, &result.Body)
+	NextTokenCopyingWhitespace(s, &result.Body)
+
+	rawType := strings.ToLower(s.Token())
+	createType, exists := CreateTypeMapping[rawType]
+
+	if !exists {
+		RecoverToNextStatementCopying(s, &result.Body, n.StatementTokens)
+		return fmt.Errorf("sqlcode only supports creating procedures, functions or types; not `%s`", rawType)
+	}
+
+	createCountInBatch, _ := n.TokenCalls["create"]
+	if (createType == SQLProcedure || createType == SQLFunction) && createCountInBatch > 0 {
+		RecoverToNextStatementCopying(s, &result.Body, n.StatementTokens)
+		return fmt.Errorf("a procedure/function must be alone in a batch; use 'go' to split batches")
+	}
+
+	result.CreateType = createType
+	CopyToken(s, &result.Body)
+	NextTokenCopyingWhitespace(s, &result.Body)
+
+	// insist on create <pattern>
+	if s.TokenType() != QuotedIdentifierToken || s.TokenLower() != n.QuotedIdentifierPattern {
+		return fmt.Errorf("create %s must be followed by %s", rawType, n.QuotedIdentifierPattern)
+	}
+
+	var err error
+	result.QuotedName, err = n.ParseCodeSchemaReference(s, result)
+	if err != nil {
+		return fmt.Errorf("QuotedIdentiferHandler returned error: %w", err)
+	}
+	if result.QuotedName.String() == "" {
+		return fmt.Errorf("expected a defined quoted name")
+	}
+
+	// we have matched the create "<createType <code>.<quotedname>"
+	// we copy the rest until the batch ends; *but* track dependencies
+	// + some other details mentioned below
+
+	//firstAs := true // See comment below on rowcount
+
+tailloop:
+	for {
+		tt := s.TokenType()
+		switch {
+		case tt == QuotedIdentifierToken && s.TokenLower() == n.QuotedIdentifierPattern:
+			// parse a dependency
+			dep, err := n.ParseCodeSchemaReference(s, result)
+			if err != nil {
+				return fmt.Errorf("failed to parse code schema dependency: %w", err)
+			}
+			if !result.HasDependsOn(dep) {
+				result.AddDependency(dep)
+			}
+		case tt == ReservedWordToken && s.ReservedWord() == "as":
+			CopyToken(s, &result.Body)
+			NextTokenCopyingWhitespace(s, &result.Body)
+			/*
+						TODO: Fix and re-enable
+						This code add RoutineName for convenience.  So:
+
+						create procedure [code@5420c0269aaf].Test as
+						begin
+							select 1
+						end
+						go
+
+						becomes:
+
+						create procedure [code@5420c0269aaf].Test as
+						declare @RoutineName nvarchar(128)
+						set @RoutineName = 'Test'
+						begin
+							select 1
+						end
+						go
+
+						However, for some very strange reason, @@rowcount is 1 with the first version,
+						and it is 2 with the second version.
+				if firstAs {
+					// Add the `RoutineName` token as a convenience, so that we can refer to the procedure/function name
+					// from inside the procedure (for example, when logging)
+					if result.CreateType == "procedure" {
+						procNameToken := Unparsed{
+							Type:     OtherToken,
+							RawValue: fmt.Sprintf(templateRoutineName, strings.Trim(result.QuotedName.Value, "[]")),
+						}
+						result.Body = append(result.Body, procNameToken)
+					}
+					firstAs = false
+				}
+			*/
+		case tt == ReservedWordToken && s.ReservedWord() == "create":
+			// So, we're currently parsing 'create ...' and we see another 'create'.
+			// We split in two cases depending on the context we are currently in
+			// (createType is referring to how we entered this function, *NOT* the
+			// `create` statement we are looking at now
+			switch createType { // note: this is the *outer* create type, not the one of current scanner position
+			case SQLFunction, SQLProcedure:
+				// Within a function/procedure we can allow 'create index', 'create table' and nothing
+				// else. (Well, only procedures can have them, but we'll leave it to T-SQL to complain
+				// about that aspect, not relevant for batch / dependency parsing)
+				//
+				// What is important is a function/procedure/type isn't started on without a 'go'
+				// in between; so we block those 3 from appearing in the same batch
+				CopyToken(s, &result.Body)
+				NextTokenCopyingWhitespace(s, &result.Body)
+				tt2 := s.TokenType()
+
+				if (tt2 == ReservedWordToken && (s.ReservedWord() == "function" ||
+					s.ReservedWord() == "procedure")) ||
+					(tt2 == UnquotedIdentifierToken &&
+						s.TokenLower() == "type") {
+					RecoverToNextStatementCopying(s, &result.Body, n.StatementTokens)
+					// TODO: note all sql dialects use "go" so slit batches.
+					// Q: Do we make this a feature of sqlcode?
+					return fmt.Errorf("a procedure/function must be alone in a batch; use 'go' to split batches")
+				}
+			case SQLType:
+				// We allow more than one type creation in a batch; and 'create' can never appear
+				// scoped within 'create type'. So at a new create we are done with the previous
+				// one, and return it -- the caller can then re-enter this function from the top
+				break tailloop
+			default:
+				panic("assertion failed")
+			}
+		case tt == BatchSeparatorToken || tt == EOFToken:
+			break tailloop
+		default:
+			CopyToken(s, &result.Body)
+			NextTokenCopyingWhitespace(s, &result.Body)
+		}
+	}
+
+	return nil
 }
