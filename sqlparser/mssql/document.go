@@ -2,7 +2,6 @@ package mssql
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	mssql "github.com/microsoft/go-mssqldb"
@@ -329,23 +328,33 @@ func (doc *TSqlDocument) parseBatch(s sqldocument.Scanner, isFirst bool) (hasMor
 			return -1
 		},
 		"create": func(s sqldocument.Scanner, b *sqldocument.Batch) int {
-			counts, exists := b.TokenCalls["create"]
-			if !exists {
-				counts = 0
+			res := &sqldocument.Create{Driver: &mssql.Driver{}}
+			err := b.ParseCreate(s, res)
+			if err != nil {
+				doc.addError(s, err.Error())
 			}
 
-			// should be start of create procedure or create function...
-			c := doc.parseCreate(s, counts)
-			c.Driver = &mssql.Driver{}
-
 			// *prepend* what we saw before getting to the 'create'
-			c.Body = append(b.Nodes, c.Body...)
-			c.Docstring = b.DocString
-			doc.creates = append(doc.creates, c)
+			res.Body = append(b.Nodes, res.Body...)
+			res.Docstring = b.DocString
+			doc.creates = append(doc.creates, *res)
 
 			//continue parsing
 			return 0
 		},
+	}
+	batch.QuotedIdentifierHandler = func(s sqldocument.Scanner, target *sqldocument.Create) (sqldocument.PosString, error) {
+		switch s.TokenType() {
+		case sqldocument.UnquotedIdentifierToken:
+			// To get something uniform for comparison, quote all names
+			sqldocument.CopyToken(s, &target.Body)
+			return sqldocument.PosString{Pos: s.Start(), Value: "[" + s.Token() + "]"}, nil
+		case sqldocument.QuotedIdentifierToken:
+			sqldocument.CopyToken(s, &target.Body)
+			return sqldocument.PosString{Pos: s.Start(), Value: s.Token()}, nil
+		default:
+			return sqldocument.PosString{Value: ""}, fmt.Errorf("[code]. must be followed an identifier")
+		}
 	}
 
 	hasMore = batch.Parse(s)
@@ -354,174 +363,4 @@ func (doc *TSqlDocument) parseBatch(s sqldocument.Scanner, isFirst bool) (hasMor
 	}
 
 	return hasMore
-}
-
-// parseCreate parses CREATE PROCEDURE/FUNCTION/TYPE statements.
-//
-// This is the core of the sqlcode parser. It:
-//  1. Validates the CREATE type is one we support (procedure/function/type)
-//  2. Extracts the object name from [code].ObjectName syntax
-//  3. Copies the entire statement body for later emission
-//  4. Tracks dependencies by finding [code].OtherObject references
-//
-// The parser is intentionally permissive about T-SQL syntax details,
-// delegating full validation to SQL Server. It focuses on extracting
-// the structural information needed for dependency ordering and code generation.
-//
-// Parameters:
-//   - s: Scanner positioned on the CREATE keyword
-//   - createCountInBatch: Number of CREATE statements already seen in this batch
-//     (used to enforce "one procedure/function per batch" rule)
-func (d *TSqlDocument) parseCreate(s sqldocument.Scanner, createCountInBatch int) (result sqldocument.Create) {
-	if s.ReservedWord() != "create" {
-		panic("illegal use by caller")
-	}
-	sqldocument.CopyToken(s, &result.Body)
-
-	sqldocument.NextTokenCopyingWhitespace(s, &result.Body)
-
-	rawType := strings.ToLower(s.Token())
-	createType, exists := sqldocument.CreateTypeMapping[strings.ToLower(s.Token())]
-
-	if !exists {
-		d.addError(s, fmt.Sprintf("sqlcode only supports creating procedures, functions or types; not `%s`", rawType))
-		sqldocument.RecoverToNextStatementCopying(s, &result.Body, TSQLStatementTokens)
-		return
-	}
-	if (createType == sqldocument.SQLProcedure || createType == sqldocument.SQLFunction) && createCountInBatch > 0 {
-		d.addError(s, "a procedure/function must be alone in a batch; use 'go' to split batches")
-		sqldocument.RecoverToNextStatementCopying(s, &result.Body, TSQLStatementTokens)
-		return
-	}
-
-	result.CreateType = createType
-	sqldocument.CopyToken(s, &result.Body)
-
-	sqldocument.NextTokenCopyingWhitespace(s, &result.Body)
-
-	// Insist on [code].
-	if s.TokenType() != sqldocument.QuotedIdentifierToken || s.Token() != "[code]" {
-		d.addError(s, fmt.Sprintf("create %s must be followed by [code].", rawType))
-		sqldocument.RecoverToNextStatementCopying(s, &result.Body, TSQLStatementTokens)
-		return
-	}
-
-	var err error
-	result.QuotedName, err = sqldocument.ParseCodeschemaName(s, &result.Body, TSQLStatementTokens)
-	if err != nil {
-		d.addError(s, err.Error())
-	}
-	if result.QuotedName.String() == "" {
-		return
-	}
-
-	// We have matched "create <createType> [code].<quotedName>"; at this
-	// point we copy the rest until the batch ends; *but* track dependencies
-	// + some other details mentioned below
-
-	//firstAs := true // See comment below on rowcount
-
-tailloop:
-	for {
-		tt := s.TokenType()
-		switch {
-		case tt == sqldocument.ReservedWordToken && s.ReservedWord() == "create":
-			// So, we're currently parsing 'create ...' and we see another 'create'.
-			// We split in two cases depending on the context we are currently in
-			// (createType is referring to how we entered this function, *NOT* the
-			// `create` statement we are looking at now
-			switch createType { // note: this is the *outer* create type, not the one of current scanner position
-			case sqldocument.SQLFunction, sqldocument.SQLProcedure:
-				// Within a function/procedure we can allow 'create index', 'create table' and nothing
-				// else. (Well, only procedures can have them, but we'll leave it to T-SQL to complain
-				// about that aspect, not relevant for batch / dependency parsing)
-				//
-				// What is important is a function/procedure/type isn't started on without a 'go'
-				// in between; so we block those 3 from appearing in the same batch
-				sqldocument.CopyToken(s, &result.Body)
-				sqldocument.NextTokenCopyingWhitespace(s, &result.Body)
-				tt2 := s.TokenType()
-
-				if (tt2 == sqldocument.ReservedWordToken && (s.ReservedWord() == "function" || s.ReservedWord() == "procedure")) ||
-					(tt2 == sqldocument.UnquotedIdentifierToken && s.TokenLower() == "type") {
-					sqldocument.RecoverToNextStatementCopying(s, &result.Body, TSQLStatementTokens)
-					d.addError(s, "a procedure/function must be alone in a batch; use 'go' to split batches")
-					return
-				}
-			case sqldocument.SQLType:
-				// We allow more than one type creation in a batch; and 'create' can never appear
-				// scoped within 'create type'. So at a new create we are done with the previous
-				// one, and return it -- the caller can then re-enter this function from the top
-				break tailloop
-			default:
-				panic("assertion failed")
-			}
-
-		case tt == sqldocument.EOFToken || tt == sqldocument.BatchSeparatorToken:
-			break tailloop
-		case tt == sqldocument.QuotedIdentifierToken && s.Token() == "[code]":
-			// Parse a dependency
-			dep, err := sqldocument.ParseCodeschemaName(s, &result.Body, TSQLStatementTokens)
-			if err != nil {
-				d.addError(s, err.Error())
-			}
-			found := false
-			for _, existing := range result.DependsOn {
-				if existing.Value == dep.Value {
-					found = true
-					break
-				}
-			}
-			if !found {
-				result.DependsOn = append(result.DependsOn, dep)
-			}
-		case tt == sqldocument.ReservedWordToken && s.Token() == "as":
-			sqldocument.CopyToken(s, &result.Body)
-			sqldocument.NextTokenCopyingWhitespace(s, &result.Body)
-			/*
-					    TODO: Fix and re-enable
-						This code add RoutineName for convenience.  So:
-
-						create procedure [code@5420c0269aaf].Test as
-						begin
-							select 1
-						end
-						go
-
-						becomes:
-
-						create procedure [code@5420c0269aaf].Test as
-						declare @RoutineName nvarchar(128)
-						set @RoutineName = 'Test'
-						begin
-							select 1
-						end
-						go
-
-						However, for some very strange reason, @@rowcount is 1 with the first version,
-						and it is 2 with the second version.
-				if firstAs {
-					// Add the `RoutineName` token as a convenience, so that we can refer to the procedure/function name
-					// from inside the procedure (for example, when logging)
-					if result.CreateType == "procedure" {
-						procNameToken := Unparsed{
-							Type:     OtherToken,
-							RawValue: fmt.Sprintf(templateRoutineName, strings.Trim(result.QuotedName.Value, "[]")),
-						}
-						result.Body = append(result.Body, procNameToken)
-					}
-					firstAs = false
-				}
-			*/
-
-		default:
-			sqldocument.CopyToken(s, &result.Body)
-			sqldocument.NextTokenCopyingWhitespace(s, &result.Body)
-		}
-	}
-
-	sort.Slice(result.DependsOn, func(i, j int) bool {
-		return result.DependsOn[i].Value < result.DependsOn[j].Value
-	})
-	return
 }
