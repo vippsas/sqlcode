@@ -33,7 +33,7 @@ type Batch struct {
 	// that procedures and functions must be alone in their batch.
 	TokenCalls map[string]int
 
-	// TokenHandlers maps reserved words to their processing functions.
+	// ReservedTokenHandlers maps reserved words to their processing functions.
 	// When a ReservedWordToken is encountered, its lowercase form is
 	// looked up here. If found, the handler is called with the scanner
 	// and batch.
@@ -42,34 +42,48 @@ type Batch struct {
 	// 		1 = break and parse a new batch
 	// 		0 = continue (no return)
 	//  	-1 = return false (stop parsing)
-	TokenHandlers map[string]func(Scanner, *Batch) int
+	ReservedTokenHandlers map[string]func(Scanner, *Batch) int
 
 	// Errors accumulates parsing errors encountered during batch processing.
 	// Errors are collected rather than stopping parsing immediately,
 	// allowing partial results even with syntax errors.
 	Errors []Error
 
-	// BatchSeparatorHandler is called when a token is encountered.
-	BatchSeparatorHandler func(Scanner, *Batch)
+	// SeparatorHandler is called when a token is encountered.
+	SeparatorHandler func(Scanner, *Batch)
 
 	// called with a quoted identifer is encountered within a create statement
 	QuotedIdentifierHandler func(Scanner, *Create) (PosString, error)
 	QuotedIdentifierPattern string
-
-	CreateHandler  func()
-	DeclareHandler func()
 
 	// List of statement tokens to fallback on
 	StatementTokens []string
 }
 
 func NewBatch() *Batch {
-	return &Batch{
+	b := &Batch{
 		TokenCalls: make(map[string]int, 0),
 		Nodes:      make([]Unparsed, 0),
 		DocString:  make([]PosString, 0),
 		Errors:     make([]Error, 0),
+		// Default code pattern
+		QuotedIdentifierPattern: "[code]",
+		QuotedIdentifierHandler: func(s Scanner, target *Create) (PosString, error) {
+			switch s.TokenType() {
+			case UnquotedIdentifierToken:
+				// To get something uniform for comparison, quote all names
+				CopyToken(s, &target.Body)
+				return PosString{Pos: s.Start(), Value: "[" + s.Token() + "]"}, nil
+			case QuotedIdentifierToken:
+				CopyToken(s, &target.Body)
+				return PosString{Pos: s.Start(), Value: s.Token()}, nil
+			default:
+				return PosString{Value: ""}, fmt.Errorf("[code]. must be followed an identifier")
+			}
+		},
 	}
+
+	return b
 }
 
 func (n *Batch) Create(s Scanner) {
@@ -108,7 +122,7 @@ func (n *Batch) Parse(s Scanner) bool {
 			s.NextToken()
 		case ReservedWordToken:
 			token := s.ReservedWord()
-			handler, exists := n.TokenHandlers[token]
+			handler, exists := n.ReservedTokenHandlers[token]
 			if exists {
 				// Invoke the handler for this reserved word
 				// The handler is responsible for advancing the scanner
@@ -125,7 +139,11 @@ func (n *Batch) Parse(s Scanner) bool {
 				s.NextToken()
 			}
 		case BatchSeparatorToken:
-			n.BatchSeparatorHandler(s, n)
+			// Note: I'm not yet sure if batch separators is a feature of sqlcode
+			// or a feature of the sql dialect.
+			if n.SeparatorHandler != nil {
+				n.SeparatorHandler(s, n)
+			}
 			return true
 		default:
 			n.Errors = append(n.Errors, Error{
@@ -200,6 +218,8 @@ func (n *Batch) ParseCreate(s Scanner, result *Create) error {
 	result.CreateType = createType
 	CopyToken(s, &result.Body)
 	NextTokenCopyingWhitespace(s, &result.Body)
+
+	fmt.Printf("%#v\n", result.Body)
 
 	// insist on create <pattern>
 	if s.TokenType() != QuotedIdentifierToken || s.TokenLower() != n.QuotedIdentifierPattern {

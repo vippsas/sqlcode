@@ -1,6 +1,7 @@
 package pgsql
 
 import (
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/vippsas/sqlcode/v2/sqlparser/sqldocument"
 )
 
@@ -25,11 +26,30 @@ func (d *PGSqlDocument) Parse(input []byte, file sqldocument.FileRef) error {
 	}
 
 	batch := sqldocument.NewBatch()
+	batch.StatementTokens = PGSqlStatementTokens
+	batch.ReservedTokenHandlers = map[string]func(sqldocument.Scanner, *sqldocument.Batch) int{
+		"create": func(s sqldocument.Scanner, b *sqldocument.Batch) int {
+			res := &sqldocument.Create{Driver: &stdlib.Driver{}}
+			err := b.ParseCreate(s, res)
+			if err != nil {
+				d.addError(s, err.Error())
+			}
 
-	batch.TokenHandlers = map[string]func(sqldocument.Scanner, *sqldocument.Batch) int_{
-		"create": func(s sqldocument.Scanner, b *sqldocument.Batch) int_ {
+			res.Body = append(res.Body, res.Body...)
+			res.Docstring = b.DocString
+			d.creates = append(d.creates, *res)
+
+			// continue parsing
 			return 0
 		},
+	}
+
+	hasMore := batch.Parse(s)
+	if batch.HasErrors() {
+		d.errors = append(d.errors, batch.Errors...)
+	}
+	if hasMore {
+		panic("not yet supported")
 	}
 
 	return nil

@@ -151,7 +151,7 @@ func TestBatch_Parse_DocStringReset(t *testing.T) {
 
 	t.Run("reset on unexpected token", func(t *testing.T) {
 		b := NewBatch()
-		b.TokenHandlers = map[string]func(Scanner, *Batch) int{}
+		b.ReservedTokenHandlers = map[string]func(Scanner, *Batch) int{}
 		scanner := &MockScanner{
 			tokens: []MockToken{
 				{Type: SinglelineCommentToken, Text: "-- comment"},
@@ -170,7 +170,7 @@ func TestBatch_Parse_ReservedWord_WithHandler(t *testing.T) {
 	t.Run("handler returns 0 (continue)", func(t *testing.T) {
 		handlerCalled := false
 		b := NewBatch()
-		b.TokenHandlers = map[string]func(Scanner, *Batch) int{
+		b.ReservedTokenHandlers = map[string]func(Scanner, *Batch) int{
 			"select": func(s Scanner, batch *Batch) int {
 				handlerCalled = true
 				s.NextToken() // Advance to EOF
@@ -193,7 +193,7 @@ func TestBatch_Parse_ReservedWord_WithHandler(t *testing.T) {
 
 	t.Run("handler returns 1 (new batch)", func(t *testing.T) {
 		b := NewBatch()
-		b.TokenHandlers = map[string]func(Scanner, *Batch) int{
+		b.ReservedTokenHandlers = map[string]func(Scanner, *Batch) int{
 			"declare": func(s Scanner, batch *Batch) int {
 				return 1
 			},
@@ -213,7 +213,7 @@ func TestBatch_Parse_ReservedWord_WithHandler(t *testing.T) {
 
 	t.Run("handler returns -1 (stop)", func(t *testing.T) {
 		b := NewBatch()
-		b.TokenHandlers = map[string]func(Scanner, *Batch) int{
+		b.ReservedTokenHandlers = map[string]func(Scanner, *Batch) int{
 			"create": func(s Scanner, batch *Batch) int {
 				return -1
 			},
@@ -234,7 +234,7 @@ func TestBatch_Parse_ReservedWord_WithHandler(t *testing.T) {
 
 func TestBatch_Parse_ReservedWord_NoHandler(t *testing.T) {
 	b := NewBatch()
-	b.TokenHandlers = map[string]func(Scanner, *Batch) int{}
+	b.ReservedTokenHandlers = map[string]func(Scanner, *Batch) int{}
 	scanner := &MockScanner{
 		tokens: []MockToken{
 			{Type: ReservedWordToken, Text: "SELECT", Reserved: "select"},
@@ -252,7 +252,7 @@ func TestBatch_Parse_ReservedWord_NoHandler(t *testing.T) {
 func TestBatch_Parse_BatchSeparator(t *testing.T) {
 	handlerCalled := false
 	b := NewBatch()
-	b.BatchSeparatorHandler = func(s Scanner, batch *Batch) {
+	b.SeparatorHandler = func(s Scanner, batch *Batch) {
 		handlerCalled = true
 	}
 	scanner := &MockScanner{
@@ -270,7 +270,7 @@ func TestBatch_Parse_BatchSeparator(t *testing.T) {
 
 func TestBatch_Parse_UnexpectedToken(t *testing.T) {
 	b := NewBatch()
-	b.TokenHandlers = map[string]func(Scanner, *Batch) int{}
+	b.ReservedTokenHandlers = map[string]func(Scanner, *Batch) int{}
 	scanner := &MockScanner{
 		tokens: []MockToken{
 			{Type: OtherToken, Text: "@unexpected", StartPos: Pos{Line: 1, Col: 1}},
@@ -288,7 +288,7 @@ func TestBatch_Parse_UnexpectedToken(t *testing.T) {
 func TestBatch_Parse_MultipleTokenCalls(t *testing.T) {
 	b := NewBatch()
 	callCount := 0
-	b.TokenHandlers = map[string]func(Scanner, *Batch) int{
+	b.ReservedTokenHandlers = map[string]func(Scanner, *Batch) int{
 		"create": func(s Scanner, batch *Batch) int {
 			callCount++
 			s.NextToken() // Advance past CREATE
@@ -313,7 +313,7 @@ func TestBatch_Parse_MultipleTokenCalls(t *testing.T) {
 
 func TestBatch_Parse_PreservesNodes(t *testing.T) {
 	b := NewBatch()
-	b.TokenHandlers = map[string]func(Scanner, *Batch) int{
+	b.ReservedTokenHandlers = map[string]func(Scanner, *Batch) int{
 		"create": func(s Scanner, batch *Batch) int {
 			// Handler can access accumulated nodes
 			assert.Len(t, batch.Nodes, 2) // Comment + whitespace
@@ -338,7 +338,7 @@ func TestBatch_Parse_PreservesNodes(t *testing.T) {
 
 func TestBatch_Parse_DocStringBuildup(t *testing.T) {
 	b := NewBatch()
-	b.TokenHandlers = map[string]func(Scanner, *Batch) int{
+	b.ReservedTokenHandlers = map[string]func(Scanner, *Batch) int{
 		"create": func(s Scanner, batch *Batch) int {
 			// At this point, we should have two docstring entries
 			require.Len(t, batch.DocString, 2)
@@ -364,7 +364,7 @@ func TestBatch_Parse_DocStringBuildup(t *testing.T) {
 
 func TestBatch_Parse_ErrorAccumulation(t *testing.T) {
 	b := NewBatch()
-	b.TokenHandlers = map[string]func(Scanner, *Batch) int{}
+	b.ReservedTokenHandlers = map[string]func(Scanner, *Batch) int{}
 
 	scanner := &MockScanner{
 		tokens: []MockToken{

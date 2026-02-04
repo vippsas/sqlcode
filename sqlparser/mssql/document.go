@@ -1,7 +1,6 @@
 package mssql
 
 import (
-	"fmt"
 	"strings"
 
 	mssql "github.com/microsoft/go-mssqldb"
@@ -292,7 +291,7 @@ func (doc *TSqlDocument) parseDeclareBatch(s sqldocument.Scanner) (hasMore bool)
 func (doc *TSqlDocument) parseBatch(s sqldocument.Scanner, isFirst bool) (hasMore bool) {
 	batch := sqldocument.NewBatch()
 	batch.StatementTokens = TSQLStatementTokens
-	batch.BatchSeparatorHandler = func(s sqldocument.Scanner, b *sqldocument.Batch) {
+	batch.SeparatorHandler = func(s sqldocument.Scanner, b *sqldocument.Batch) {
 		errorEmitted := false
 		for {
 			switch s.NextToken() {
@@ -312,7 +311,8 @@ func (doc *TSqlDocument) parseBatch(s sqldocument.Scanner, isFirst bool) (hasMor
 			}
 		}
 	}
-	batch.TokenHandlers = map[string]func(sqldocument.Scanner, *sqldocument.Batch) int{
+
+	batch.ReservedTokenHandlers = map[string]func(sqldocument.Scanner, *sqldocument.Batch) int{
 		"declare": func(s sqldocument.Scanner, _ *sqldocument.Batch) int {
 			// First declare-statement; enter a mode where we assume all contents
 			// of batch are declare statements
@@ -343,19 +343,6 @@ func (doc *TSqlDocument) parseBatch(s sqldocument.Scanner, isFirst bool) (hasMor
 			//continue parsing
 			return 0
 		},
-	}
-	batch.QuotedIdentifierHandler = func(s sqldocument.Scanner, target *sqldocument.Create) (sqldocument.PosString, error) {
-		switch s.TokenType() {
-		case sqldocument.UnquotedIdentifierToken:
-			// To get something uniform for comparison, quote all names
-			sqldocument.CopyToken(s, &target.Body)
-			return sqldocument.PosString{Pos: s.Start(), Value: "[" + s.Token() + "]"}, nil
-		case sqldocument.QuotedIdentifierToken:
-			sqldocument.CopyToken(s, &target.Body)
-			return sqldocument.PosString{Pos: s.Start(), Value: s.Token()}, nil
-		default:
-			return sqldocument.PosString{Value: ""}, fmt.Errorf("[code]. must be followed an identifier")
-		}
 	}
 
 	hasMore = batch.Parse(s)

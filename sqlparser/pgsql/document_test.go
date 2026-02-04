@@ -45,7 +45,7 @@ SELECT 1;
 }
 
 func TestDocument_Parse_SimpleFunction(t *testing.T) {
-	input := `CREATE FUNCTION add_numbers(a INTEGER, b INTEGER)
+	input := `CREATE FUNCTION [code].add_numbers(a INTEGER, b INTEGER)
 RETURNS INTEGER
 LANGUAGE plpgsql
 AS $$
@@ -56,7 +56,7 @@ $$;`
 
 	doc := ParseString(t, "test.pgsql", input)
 
-	// Currently the parser only handles pragmas, so no creates yet
+	assert.Nil(t, doc.Errors())
 	assert.False(t, doc.HasErrors())
 }
 
@@ -70,7 +70,7 @@ END;
 $proc$;`
 
 	doc := ParseString(t, "test.pgsql", input)
-
+	assert.Len(t, doc.Creates(), 1)
 	assert.False(t, doc.HasErrors())
 }
 

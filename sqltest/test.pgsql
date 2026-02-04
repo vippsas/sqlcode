@@ -1,4 +1,4 @@
-create procedure [code].test()
+create procedure "code".test()
 language plpgsql
 as $$
 begin
