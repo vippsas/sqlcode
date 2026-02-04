@@ -1,0 +1,29 @@
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:latest
+    networks:
+      - mssql
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: VippsPw1
+    healthcheck:
+      test: ["CMD", "/opt/mssql-tools18/bin/sqlcmd", "-C", "-Usa", "-PVippsPw1", "-Q", "select 1"]
+      interval: 1s
+      retries: 20
+  test:
+    build:
+      no_cache: true
+      context: .
+      dockerfile: dockerfile.test
+    networks:
+      - mssql
+    volumes:
+      - $PWD:/sqlcode
+    environment:
+      SQLSERVER_DSN: sqlserver://mssql:1433?database=master&user id=sa&password=VippsPw1
+      GODEBUG: "x509negativeserial=1"
+    depends_on:
+      mssql:
+        condition: service_healthy
+networks:
+  mssql:

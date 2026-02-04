@@ -1,6 +1,6 @@
 databases:
-  localtest:
-    connection: sqlserver://localhost:1433?database=foo&user id=foouser&password=FooPasswd1
+  mssql:
+    connection: sqlserver://mssql:1433?database=foo&user id=foouser&password=FooPasswd1
 
 # One option is to list other paths to include ('dependencies') here.
 

@@ -1,13 +1,17 @@
+//go:build examples
+// +build examples
+
 package example
 
 import (
 	"context"
 	"fmt"
+	"testing"
+	"time"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vippsas/sqlcode/sqltest"
-	"testing"
-	"time"
 )
 
 func TestPreprocess(t *testing.T) {
