@@ -1,0 +1,5 @@
+FROM golang:1.25 AS builder
+WORKDIR /sqlcode
+COPY . .
+RUN go mod tidy
+CMD ["go", "test", "-v", "-cover", "./..."]
