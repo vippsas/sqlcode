@@ -1,6 +1,6 @@
 module github.com/vippsas/sqlcode
 
-go 1.24.3
+go 1.25.0
 
 require (
 	github.com/alecthomas/repr v0.5.2
@@ -10,7 +10,7 @@ require (
 	github.com/smasher164/xid v0.1.2
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/net v0.50.0
+	golang.org/x/net v0.51.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
