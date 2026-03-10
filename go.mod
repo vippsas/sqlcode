@@ -4,7 +4,6 @@ go 1.25.7
 
 require (
 	github.com/alecthomas/repr v0.5.2
-	github.com/denisenkom/go-mssqldb v0.12.3
 	github.com/gofrs/uuid v4.4.0+incompatible
 	github.com/microsoft/go-mssqldb v1.9.8
 	github.com/sirupsen/logrus v1.9.4
