@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	mssql "github.com/microsoft/go-mssqldb"
-	"github.com/denisenkom/go-mssqldb/msdsn"
+	"github.com/microsoft/go-mssqldb/msdsn"
 	"github.com/gofrs/uuid"
 	"io/ioutil"
 	"os"
