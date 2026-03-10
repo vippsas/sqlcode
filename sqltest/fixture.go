@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	mssql "github.com/denisenkom/go-mssqldb"
+	mssql "github.com/microsoft/go-mssqldb"
 	"github.com/denisenkom/go-mssqldb/msdsn"
 	"github.com/gofrs/uuid"
 	"io/ioutil"
