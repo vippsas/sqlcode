@@ -6,6 +6,14 @@ import (
 )
 
 func Exists(ctx context.Context, dbc DB, schemasuffix string) (bool, error) {
+	return exists(ctx, dbc, schemasuffix)
+}
+
+type queryRower interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+func exists(ctx context.Context, dbc queryRower, schemasuffix string) (bool, error) {
 	var schemaID int
 	err := dbc.QueryRowContext(ctx, `select isnull(schema_id(@p1), 0)`, SchemaName(schemasuffix)).Scan(&schemaID)
 	if err != nil {
