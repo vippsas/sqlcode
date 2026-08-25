@@ -16,11 +16,11 @@ import (
 type StdoutLogger struct {
 }
 
-func (s StdoutLogger) Printf(format string, v ...interface{}) {
+func (s StdoutLogger) Printf(format string, v ...any) {
 	fmt.Printf(format, v...)
 }
 
-func (s StdoutLogger) Println(v ...interface{}) {
+func (s StdoutLogger) Println(v ...any) {
 	fmt.Println(v...)
 }
 
@@ -102,8 +102,8 @@ func (f *Fixture) RunMigrations() {
 	if err != nil {
 		panic(err)
 	}
-	parts := strings.Split(string(migrationSql), "\ngo\n")
-	for _, p := range parts {
+	parts := strings.SplitSeq(string(migrationSql), "\ngo\n")
+	for p := range parts {
 		_, err = f.DB.Exec(p)
 		if err != nil {
 			fmt.Println(p)
@@ -117,8 +117,8 @@ func (f *Fixture) RunMigrationFile(filename string) {
 	if err != nil {
 		panic(err)
 	}
-	parts := strings.Split(string(migrationSql), "\ngo\n")
-	for _, p := range parts {
+	parts := strings.SplitSeq(string(migrationSql), "\ngo\n")
+	for p := range parts {
 		_, err = f.DB.Exec(p)
 		if err != nil {
 			fmt.Println(p)
