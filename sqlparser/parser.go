@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io/fs"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -637,13 +638,7 @@ func ParseFilesystems(fslst []fs.FS, includeTags []string) (filenames []string, 
 
 func matchesIncludeTags(required []string, got []string) bool {
 	for _, r := range required {
-		found := false
-		for _, g := range got {
-			if g == r {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(got, r)
 		if !found {
 			return false
 		}

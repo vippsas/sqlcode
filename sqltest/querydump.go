@@ -11,19 +11,19 @@ import (
 	"github.com/alecthomas/repr"
 )
 
-type MapRow map[string]interface{}
+type MapRow map[string]any
 type MapRows []MapRow
 
-type Row []interface{}
+type Row []any
 type Rows []Row
 
-func runQuery(dbi interface{}, qry string, args ...interface{}) *sql.Rows {
+func runQuery(dbi any, qry string, args ...any) *sql.Rows {
 
 	switch q := dbi.(type) {
 	case CtxQuerier:
 		rows, err := q.QueryContext(context.Background(), qry, args...)
 		if err != nil {
-		    panic(fmt.Sprintf("runQuery, query: %s \n\n arguments:%+v \n\n  error: %s", qry, args, err))
+			panic(fmt.Sprintf("runQuery, query: %s \n\n arguments:%+v \n\n  error: %s", qry, args, err))
 		}
 		return rows
 	default:
@@ -44,15 +44,15 @@ func RowIteratorToSlice(rows *sql.Rows) (columns []string, result Rows) {
 		panic(fmt.Sprintf("RowIteratorToSlice: while getting columns types: %s", err))
 	}
 	n := len(columns)
-	rowValues := make([]interface{}, n, n)
-	pointers := make([]interface{}, n, n)
-	for i := 0; i < len(columns); i++ {
+	rowValues := make([]any, n, n)
+	pointers := make([]any, n, n)
+	for i := range columns {
 		pointers[i] = &rowValues[i]
 	}
 	for rows.Next() {
 		err = rows.Scan(pointers...)
 		if err != nil {
-		    panic(fmt.Sprintf("RowIteratorToSlice: while scanning: %s", err))
+			panic(fmt.Sprintf("RowIteratorToSlice: while scanning: %s", err))
 		}
 
 		var row Row
@@ -96,7 +96,7 @@ func DumpRows(rows *sql.Rows) {
 	if len(parsedRows) > 0 {
 		for _, row := range parsedRows {
 			for i, value := range row {
-				var val interface{}
+				var val any
 				switch v := value.(type) {
 				case string:
 					val = repr.String(v)
@@ -113,11 +113,11 @@ func DumpRows(rows *sql.Rows) {
 }
 
 // Returns the result of a query as a loosely typed structure, for use with test code
-func QueryMaps(dbi CtxQuerier, qry string, args ...interface{}) MapRows {
+func QueryMaps(dbi CtxQuerier, qry string, args ...any) MapRows {
 	return RowsMap(RowIteratorToSlice(runQuery(dbi, qry, args...)))
 }
 
-func Query(dbi CtxQuerier, qry string, args ...interface{}) Rows {
+func Query(dbi CtxQuerier, qry string, args ...any) Rows {
 	_, rows := RowIteratorToSlice(runQuery(dbi, qry, args...))
 	// do not use nil but a zero-length slice (for backwards compatability as of this writing, wasn't a conscious decision
 	// at the time it was done)
@@ -127,21 +127,21 @@ func Query(dbi CtxQuerier, qry string, args ...interface{}) Rows {
 	return rows
 }
 
-func QueryInt(dbi CtxQuerier, qry string, args ...interface{}) (result int) {
+func QueryInt(dbi CtxQuerier, qry string, args ...any) (result int) {
 	if err := dbi.QueryRowContext(context.Background(), qry, args...).Scan(&result); err != nil {
 		panic(fmt.Sprintf("QueryInt, query: %s\n\n arguments:%+v\n\n  error: %s", qry, args, err))
 	}
 	return
 }
 
-func QueryString(dbi CtxQuerier, qry string, args ...interface{}) (result string) {
+func QueryString(dbi CtxQuerier, qry string, args ...any) (result string) {
 	if err := dbi.QueryRowContext(context.Background(), qry, args...).Scan(&result); err != nil {
 		panic(fmt.Sprintf("QueryString, query: %s\n\n arguments:%+v\n\n  error: %s", qry, args, err))
 	}
 	return
 }
 
-func QueryTime(dbi CtxQuerier, qry string, args ...interface{}) (result time.Time) {
+func QueryTime(dbi CtxQuerier, qry string, args ...any) (result time.Time) {
 	if err := dbi.QueryRowContext(context.Background(), qry, args...).Scan(&result); err != nil {
 		panic(fmt.Sprintf("QueryTime, query: %s\n\n arguments:%+v\n\n  error: %s", qry, args, err))
 	}
@@ -149,7 +149,7 @@ func QueryTime(dbi CtxQuerier, qry string, args ...interface{}) (result time.Tim
 }
 
 // Dump result of query to output
-func QueryDump(dbi interface{}, qry string, args ...interface{}) {
+func QueryDump(dbi any, qry string, args ...any) {
 	fmt.Println("============================")
 	fmt.Println(qry)
 	fmt.Println("============================")
