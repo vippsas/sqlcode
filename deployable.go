@@ -37,10 +37,12 @@ func (d Deployable) WithSchemaSuffix(schemaSuffix string) Deployable {
 // impersonate manages impersonating another user (presumably one with fewer privleges)
 // for an operation
 func impersonate(ctx context.Context, dbc DB, username string, f func(conn *sql.Conn) error) error {
-	if strings.Contains(username, "\"") {
-		panic("assertion failed")
-	}
+	return withConn(ctx, dbc, func(conn *sql.Conn) error {
+		return impersonateConn(ctx, conn, username, f)
+	})
+}
 
+func withConn(ctx context.Context, dbc DB, f func(conn *sql.Conn) error) error {
 	conn, err := dbc.Conn(ctx)
 	if err != nil {
 		return err
@@ -49,13 +51,21 @@ func impersonate(ctx context.Context, dbc DB, username string, f func(conn *sql.
 		_ = conn.Close()
 	}()
 
+	return f(conn)
+}
+
+func impersonateConn(ctx context.Context, conn *sql.Conn, username string, f func(conn *sql.Conn) error) error {
+	if strings.Contains(username, "\"") {
+		panic("assertion failed")
+	}
+
 	// a cookie is used to be able to revert the connection back to original
 	// privileges
 	var executeAsCookie []byte
 
 	// Note: we don't want to time out when messing with privileges, so
 	// use context.Background here
-	err = conn.QueryRowContext(context.Background(), fmt.Sprintf(`
+	err := conn.QueryRowContext(context.Background(), fmt.Sprintf(`
 		declare @cookie varbinary(8000);
 		execute as user = '%s' with cookie into @cookie;
 		select @cookie
@@ -77,10 +87,16 @@ func impersonate(ctx context.Context, dbc DB, username string, f func(conn *sql.
 // Upload will create and upload the schema; resulting in an error
 // if the schema already exists
 func (d *Deployable) Upload(ctx context.Context, dbc DB) error {
+	return withConn(ctx, dbc, func(conn *sql.Conn) error {
+		return d.upload(ctx, dbc, conn)
+	})
+}
+
+func (d *Deployable) upload(ctx context.Context, dbc DB, conn *sql.Conn) error {
 	// First, impersonate a user with minimal privileges to get at least
 	// some level of sandboxing so that migration scripts can't do anything
 	// the caller didn't expect them to.
-	return impersonate(ctx, dbc, "sqlcode-deploy-sandbox-user", func(conn *sql.Conn) error {
+	return impersonateConn(ctx, conn, "sqlcode-deploy-sandbox-user", func(conn *sql.Conn) error {
 		tx, err := conn.BeginTx(ctx, nil)
 		if err != nil {
 			return err
@@ -137,43 +153,48 @@ func (d *Deployable) EnsureUploaded(ctx context.Context, dbc DB) error {
 		return nil
 	}
 
-	lockResourceName := "sqlcode.EnsureUploaded/" + d.SchemaSuffix
+	return withConn(ctx, dbc, func(conn *sql.Conn) (err error) {
+		lockResourceName := "sqlcode.EnsureUploaded/" + d.SchemaSuffix
 
-	// When a lock is opened with the Transaction lock owner,
-	// that lock is released when the transaction is committed or rolled back.
-	var lockRetCode int
-	err := dbc.QueryRowContext(ctx, `
+		// Session-owned application locks must be acquired and released on the
+		// same physical connection, so keep it pinned for the whole operation.
+		var lockRetCode int
+		err = conn.QueryRowContext(ctx, `
 declare @retcode int;
 exec @retcode = sp_getapplock @Resource = @resource, @LockMode = 'Shared', @LockOwner = 'Session', @LockTimeout = @timeoutMs;
 select @retcode;
 `,
-		sql.Named("resource", lockResourceName),
-		sql.Named("timeoutMs", 20000),
-	).Scan(&lockRetCode)
-	if err != nil {
-		return err
-	}
-	if lockRetCode < 0 {
-		return errors.New("was not able to get lock before timeout")
-	}
+			sql.Named("resource", lockResourceName),
+			sql.Named("timeoutMs", 20000),
+		).Scan(&lockRetCode)
+		if err != nil {
+			return err
+		}
+		if lockRetCode < 0 {
+			return errors.New("was not able to get lock before timeout")
+		}
 
-	defer func() {
-		_, _ = dbc.ExecContext(ctx, `sp_releaseapplock`,
-			sql.Named("Resource", lockResourceName),
-			sql.Named("LockOwner", "Session"),
-		)
-	}()
+		defer func() {
+			_, releaseErr := conn.ExecContext(context.Background(), `sp_releaseapplock`,
+				sql.Named("Resource", lockResourceName),
+				sql.Named("LockOwner", "Session"),
+			)
+			if releaseErr != nil {
+				err = errors.Join(err, fmt.Errorf("release application lock: %w", releaseErr))
+			}
+		}()
 
-	exists, err := Exists(ctx, dbc, d.SchemaSuffix)
-	if err != nil {
-		return err
-	}
+		exists, err := exists(ctx, conn, d.SchemaSuffix)
+		if err != nil {
+			return err
+		}
 
-	if exists {
-		return nil
-	}
+		if exists {
+			return nil
+		}
 
-	return d.Upload(ctx, dbc)
+		return d.upload(ctx, dbc, conn)
+	})
 }
 
 // UploadWithOverwrite will always drop the schema if it exists, before
