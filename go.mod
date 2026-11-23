@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/alecthomas/repr v0.5.4
 	github.com/gofrs/uuid/v5 v5.5.1
-	github.com/microsoft/go-mssqldb v1.11.2
+	github.com/microsoft/go-mssqldb v1.12.0
 	github.com/sirupsen/logrus v1.10.2
 	github.com/smasher164/xid v0.1.2
 	github.com/spf13/cobra v1.10.2
